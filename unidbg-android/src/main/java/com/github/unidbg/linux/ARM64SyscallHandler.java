@@ -1205,6 +1205,9 @@ public class ARM64SyscallHandler extends AndroidSyscallHandler {
             case PR_SET_NO_NEW_PRIVS:
             case PR_SET_THP_DISABLE:
                 return 0;
+            case 3:
+            case 39:
+                return 0;
         }
         throw new UnsupportedOperationException("option=" + option);
     }

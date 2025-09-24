@@ -93,14 +93,16 @@ public class DalvikVM64 extends BaseVM implements VM {
         Pointer _FromReflectedMethod = svcMemory.registerSvc(new Arm64Svc() {
             @Override
             public long handle(Emulator<?> emulator) {
-                throw new UnsupportedOperationException();
+//                throw new UnsupportedOperationException();
+                return 0;
             }
         });
 
         Pointer _FromReflectedField = svcMemory.registerSvc(new Arm64Svc() {
             @Override
             public long handle(Emulator<?> emulator) {
-                throw new UnsupportedOperationException();
+//                throw new UnsupportedOperationException();
+                return 0;
             }
         });
 
@@ -551,6 +553,9 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
+                if(dvmClass.getClassName().equals("android/telephony/TelephonyManager")){
+                    return 0;
+                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException("dvmObject=" + dvmObject + ", dvmClass=" + dvmClass + ", jmethodID=" + jmethodID);
@@ -628,6 +633,9 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
+                if (dvmClass.getClassName().equals("android/net/wifi/WifiManager")) {
+                    return 0;
+                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
@@ -806,6 +814,11 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
+                if(dvmClass.getClassName().equals("android/telephony/TelephonyManager")){
+                    return 0;
+                }else{
+                    System.out.println(dvmClass.getClassName());
+                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
@@ -883,6 +896,9 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
+                if(dvmClass.getClassName().equals("android/os/BatteryManager")){
+                    return 0;
+                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();

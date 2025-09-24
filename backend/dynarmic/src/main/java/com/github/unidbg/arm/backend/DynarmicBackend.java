@@ -7,12 +7,12 @@ import com.github.unidbg.arm.backend.dynarmic.Dynarmic;
 import com.github.unidbg.arm.backend.dynarmic.DynarmicCallback;
 import com.github.unidbg.arm.backend.dynarmic.DynarmicException;
 import com.github.unidbg.arm.backend.dynarmic.EventMemHookNotifier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 public abstract class DynarmicBackend extends FastBackend implements Backend, DynarmicCallback {
 
-    private static final Logger log = LoggerFactory.getLogger(DynarmicBackend.class);
+    private static final Log log = LogFactory.getLog(DynarmicBackend.class);
 
     protected final Dynarmic dynarmic;
 
@@ -43,7 +43,7 @@ public abstract class DynarmicBackend extends FastBackend implements Backend, Dy
         try {
             emulator.attach().debug();
         } catch (Exception e) {
-            e.printStackTrace(System.err);
+            e.printStackTrace();
         }
     }
 
@@ -75,7 +75,7 @@ public abstract class DynarmicBackend extends FastBackend implements Backend, Dy
     @Override
     public final synchronized void emu_start(long begin, long until, long timeout, long count) throws BackendException {
         if (log.isDebugEnabled()) {
-            log.debug("emu_start begin=0x{}, until=0x{}, timeout={}, count={}", Long.toHexString(begin), Long.toHexString(until), timeout, count);
+            log.debug("emu_start begin=0x" + Long.toHexString(begin) + ", until=0x" + Long.toHexString(until) + ", timeout=" + timeout + ", count=" + count);
         }
         this.until = until + 4;
         try {

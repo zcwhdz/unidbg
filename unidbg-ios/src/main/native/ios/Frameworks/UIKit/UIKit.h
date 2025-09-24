@@ -3,7 +3,6 @@
 #import "../frameworks.h"
 
 typedef NSString *NSNotificationName;
-const NSNotificationName UIAccessibilityVoiceOverStatusDidChangeNotification = @"UIAccessibilityVoiceOverStatusDidChangeNotification";
 const NSNotificationName UIApplicationDidReceiveMemoryWarningNotification = @"UIApplicationDidReceiveMemoryWarningNotification";
 const NSNotificationName UIApplicationDidEnterBackgroundNotification = @"UIApplicationDidEnterBackgroundNotification";
 const NSNotificationName UIApplicationDidBecomeActiveNotification = @"UIApplicationDidBecomeActiveNotification";
@@ -31,8 +30,6 @@ const NSNotificationName UIContentSizeCategoryDidChangeNotification = @"UIConten
 const NSNotificationName UIDeviceBatteryLevelDidChangeNotification = @"UIDeviceBatteryLevelDidChangeNotification";
 const NSNotificationName UIKeyboardWillChangeFrameNotification = @"UIKeyboardWillChangeFrameNotification";
 const NSNotificationName UIKeyboardDidChangeFrameNotification = @"UIKeyboardDidChangeFrameNotification";
-const NSNotificationName UIDeviceOrientationDidChangeNotification = @"UIDeviceOrientationDidChangeNotification";
-const NSNotificationName UIKeyboardDidShowNotification = @"UIKeyboardDidShowNotification";
 
 NSString *const NSExtensionHostDidEnterBackgroundNotification = @"NSExtensionHostDidEnterBackgroundNotification";
 NSString *const NSExtensionHostDidBecomeActiveNotification = @"NSExtensionHostDidBecomeActiveNotification";
@@ -155,7 +152,6 @@ typedef enum UIAccessibilityContrast : NSInteger {
 @property(nonatomic, readonly) UIView *superview;
 @property(nonatomic) UIViewAutoresizing autoresizingMask;
 @property(nonatomic, readonly, strong) CALayer *layer;
-+ (NSTimeInterval)inheritedAnimationDuration;
 - (id)initWithFrame:(CGRect)rect;
 - (void)setAccessibilityViewIsModal:(BOOL)flag;
 - (void)setOverrideUserInterfaceStyle:(UIUserInterfaceStyle)style;
@@ -165,7 +161,6 @@ typedef enum UIAccessibilityContrast : NSInteger {
 - (void)addGestureRecognizer:(UIGestureRecognizer *)gestureRecognizer;
 - (void)setTintColor:(UIColor *)tintColor;
 - (UIView *)snapshotViewAfterScreenUpdates:(BOOL)afterUpdates;
-- (NSArray *)gestureRecognizers;
 @end
 
 @interface UINavigationItem : NSObject
@@ -274,16 +269,6 @@ typedef enum UIUserInterfaceIdiom : NSInteger {
     UIUserInterfaceIdiomPhone
 } UIUserInterfaceIdiom;
 
-typedef enum UIDeviceOrientation : NSInteger {
-    UIDeviceOrientationUnknown,
-    UIDeviceOrientationPortrait,
-    UIDeviceOrientationPortraitUpsideDown,
-    UIDeviceOrientationLandscapeLeft,
-    UIDeviceOrientationLandscapeRight,
-    UIDeviceOrientationFaceUp,
-    UIDeviceOrientationFaceDown
-} UIDeviceOrientation;
-
 @interface UIDevice : NSObject
 
 @property(nonatomic, getter=isBatteryMonitoringEnabled) BOOL batteryMonitoringEnabled;
@@ -299,7 +284,6 @@ typedef enum UIDeviceOrientation : NSInteger {
 - (NSString *)name;
 
 - (UIDeviceBatteryState)batteryState;
-- (UIDeviceOrientation)orientation;
 
 @end
 
@@ -325,7 +309,6 @@ typedef enum UIDeviceOrientation : NSInteger {
 - (NSOperatingSystemVersion) operatingSystemVersion;
 - (NSProcessInfoThermalState) thermalState;
 - (BOOL) isLowPowerModeEnabled;
-- (BOOL) isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion) version;
 @end
 #pragma clang diagnostic pop
 
@@ -355,20 +338,12 @@ typedef enum UIDeviceOrientation : NSInteger {
 - (void) setUnderlyingQueue: (dispatch_queue_t) queue;
 @end
 
-@interface NSOperation (Foundation)
-- (void) setQualityOfService: (NSQualityOfService) qualityOfService;
-@end
-
 @interface NSDateFormatter (Foundation)
 - (void)setLocalizedDateFormatFromTemplate:(NSString *)dateFormatTemplate;
 @end
 
 @interface NSKeyedArchiver (Foundation)
 - (id)initRequiringSecureCoding:(BOOL)requiresSecureCoding;
-@end
-
-@interface NSDate (Foundation)
-+ (id)now;
 @end
 
 @interface UIScreen : NSObject
@@ -431,10 +406,6 @@ BOOL UIAccessibilityDarkerSystemColorsEnabled();
 @end
 
 @interface BRQuery : NSObject
-@end
-
-@interface NSConstantArray : NSArray
-- (unsigned long)count;
 @end
 
 @interface NSConstantIntegerNumber : NSNumber {

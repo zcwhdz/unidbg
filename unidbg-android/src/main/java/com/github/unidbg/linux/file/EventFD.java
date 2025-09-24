@@ -5,15 +5,15 @@ import com.github.unidbg.file.NewFileIO;
 import com.github.unidbg.file.linux.BaseAndroidFileIO;
 import com.github.unidbg.file.linux.IOConstants;
 import com.sun.jna.Pointer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class EventFD extends BaseAndroidFileIO implements NewFileIO {
 
-    private static final Logger log = LoggerFactory.getLogger(EventFD.class);
+    private static final Log log = LogFactory.getLog(EventFD.class);
 
     private final boolean semaphore;
     private final boolean nonblock;
@@ -58,7 +58,9 @@ public class EventFD extends BaseAndroidFileIO implements NewFileIO {
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         long cnt = buffer.getLong();
         counter += cnt;
-        log.debug("write cnt={}, counter={}", cnt, counter);
+        if (log.isDebugEnabled()) {
+            log.debug("write cnt=" + cnt + ", counter=" + counter);
+        }
         return 8;
     }
 

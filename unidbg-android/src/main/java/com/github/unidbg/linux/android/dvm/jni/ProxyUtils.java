@@ -20,71 +20,59 @@ import java.util.List;
 
 class ProxyUtils {
 
-    private static class MethodArgs {
-        final Class<?>[] types;
-        final Object[] args;
-        public MethodArgs(List<Class<?>> types, List<Object> args) {
-            this.types = types.toArray(new Class[0]);
-            this.args = args.toArray();
-        }
-    }
-
-    private static MethodArgs parseMethodArgs(DvmMethod dvmMethod, VarArg varArg, ClassLoader classLoader) {
+    private static void parseMethodArgs(DvmMethod dvmMethod, List<Class<?>> classes, List<Object> args, VarArg varArg, ClassLoader classLoader) {
         Shorty[] shorties = dvmMethod.decodeArgsShorty();
-        List<Class<?>> types = new ArrayList<>(shorties.length);
-        List<Object> args = new ArrayList<>(shorties.length);
         for (int i = 0; i < shorties.length; i++) {
             Shorty shorty = shorties[i];
             switch (shorty.getType()) {
                 case 'B':
-                    types.add(byte.class);
+                    classes.add(byte.class);
                     args.add((byte) varArg.getIntArg(i));
                     break;
                 case 'C':
-                    types.add(char.class);
+                    classes.add(char.class);
                     args.add((char) varArg.getIntArg(i));
                     break;
                 case 'I':
-                    types.add(int.class);
+                    classes.add(int.class);
                     args.add(varArg.getIntArg(i));
                     break;
                 case 'S':
-                    types.add(short.class);
+                    classes.add(short.class);
                     args.add((short) varArg.getIntArg(i));
                     break;
                 case 'Z':
-                    types.add(boolean.class);
+                    classes.add(boolean.class);
                     int value = varArg.getIntArg(i);
                     args.add(BaseVM.valueOf(value));
                     break;
                 case 'F':
-                    types.add(float.class);
+                    classes.add(float.class);
                     args.add(varArg.getFloatArg(i));
                     break;
                 case 'L':
                     DvmObject<?> dvmObject = varArg.getObjectArg(i);
                     if (dvmObject == null) {
-                        types.add(shorty.decodeType(classLoader));
+                        classes.add(shorty.decodeType(classLoader));
                         args.add(null);
                     } else {
                         Object obj = unpack(dvmObject);
-                        types.add(obj.getClass());
+                        classes.add(obj.getClass());
                         args.add(obj);
                     }
                     break;
                 case 'D':
-                    types.add(double.class);
+                    classes.add(double.class);
                     args.add(varArg.getDoubleArg(i));
                     break;
                 case 'J':
-                    types.add(long.class);
+                    classes.add(long.class);
                     args.add(varArg.getLongArg(i));
                     break;
                 default:
                     throw new IllegalStateException("c=" + shorty.getType());
             }
         }
-        return new MethodArgs(types, args);
     }
 
     private static Object unpack(DvmObject<?> dvmObject) {
@@ -240,33 +228,42 @@ class ProxyUtils {
         if (!"<init>".equals(dvmMethod.getMethodName())) {
             throw new IllegalStateException(dvmMethod.getMethodName());
         }
-        MethodArgs methodArgs = parseMethodArgs(dvmMethod, varArg, clazz.getClassLoader());
+        List<Class<?>> classes = new ArrayList<>(10);
+        List<Object> args = new ArrayList<>(10);
+        parseMethodArgs(dvmMethod, classes, args, varArg, clazz.getClassLoader());
         if (dvmMethod.member != null) {
-            return new ProxyConstructor(visitor, (Constructor<?>) dvmMethod.member, methodArgs.args);
+            return new ProxyConstructor(visitor, (Constructor<?>) dvmMethod.member, args.toArray());
         }
-        Constructor<?> constructor = matchConstructorTypes(clazz, methodArgs.types);
+        Class<?>[] types = classes.toArray(new Class<?>[0]);
+        Constructor<?> constructor = matchConstructorTypes(clazz, types);
         dvmMethod.setMember(constructor);
-        return new ProxyConstructor(visitor, constructor, methodArgs.args);
+        return new ProxyConstructor(visitor, constructor, args.toArray());
     }
 
     static ProxyCall findMethod(Class<?> clazz, DvmMethod dvmMethod, VarArg varArg, boolean isStatic, ProxyDvmObjectVisitor visitor) throws NoSuchMethodException {
-        MethodArgs methodArgs = parseMethodArgs(dvmMethod, varArg, clazz.getClassLoader());
+        List<Class<?>> classes = new ArrayList<>(10);
+        List<Object> args = new ArrayList<>(10);
+        parseMethodArgs(dvmMethod, classes, args, varArg, clazz.getClassLoader());
         if (dvmMethod.member != null) {
-            return new ProxyMethod(visitor, dvmMethod.member, methodArgs.args);
+            return new ProxyMethod(visitor, dvmMethod.member, args.toArray());
         }
-        Member method = matchMethodTypes(clazz, dvmMethod.getMethodName(), methodArgs.types, isStatic);
+        Class<?>[] types = classes.toArray(new Class[0]);
+        Member method = matchMethodTypes(clazz, dvmMethod.getMethodName(), types, isStatic);
         dvmMethod.setMember(method);
-        return new ProxyMethod(visitor, method, methodArgs.args);
+        return new ProxyMethod(visitor, method, args.toArray());
     }
 
     static ProxyCall findMethod(Class<?> clazz, DvmMethod dvmMethod, VaList vaList, boolean isStatic, ProxyDvmObjectVisitor visitor) throws NoSuchMethodException {
-        MethodArgs methodArgs = parseMethodArgs(dvmMethod, vaList, clazz.getClassLoader());
+        List<Class<?>> classes = new ArrayList<>(10);
+        List<Object> args = new ArrayList<>(10);
+        parseMethodArgs(dvmMethod, classes, args, vaList, clazz.getClassLoader());
         if (dvmMethod.member != null) {
-            return new ProxyMethod(visitor, dvmMethod.member, methodArgs.args);
+            return new ProxyMethod(visitor, dvmMethod.member, args.toArray());
         }
-        Member method = matchMethodTypes(clazz, dvmMethod.getMethodName(), methodArgs.types, isStatic);
+        Class<?>[] types = classes.toArray(new Class[0]);
+        Member method = matchMethodTypes(clazz, dvmMethod.getMethodName(), types, isStatic);
         dvmMethod.setMember(method);
-        return new ProxyMethod(visitor, method, methodArgs.args);
+        return new ProxyMethod(visitor, method, args.toArray());
     }
 
     static Field matchField(Class<?> clazz, String fieldName, Class<?> fieldType, boolean isStatic) throws NoSuchFieldException {

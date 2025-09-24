@@ -16,8 +16,8 @@ import com.github.unidbg.memory.MemRegion;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.memory.SvcMemory;
 import com.github.unidbg.utils.Inspector;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import unicorn.Arm64Const;
 import unicorn.ArmConst;
 import unicorn.UnicornConst;
@@ -33,7 +33,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class AndroidServer extends AbstractDebugServer implements ModuleListener {
 
-    private static final Logger log = LoggerFactory.getLogger(AndroidServer.class);
+    private static final Log log = LogFactory.getLog(AndroidServer.class);
 
     private final byte protocolVersion;
 
@@ -78,7 +78,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
     @Override
     public void onLoaded(Emulator<?> emulator, Module module) {
         if (log.isDebugEnabled()) {
-            log.debug("onLoaded module={}", module);
+            log.debug("onLoaded module=" + module);
         }
     }
 
@@ -123,7 +123,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
                 long value = Utils.unpack_dd(buffer);
                 long b = Utils.unpack_dd(buffer);
                 if (log.isDebugEnabled()) {
-                    log.debug("processCommand value=0x{}, b={}", Long.toHexString(value), b);
+                    log.debug("processCommand value=0x" + Long.toHexString(value) + ", b=" + b);
                 }
                 sendAck((byte) 0x5);
                 break;
@@ -189,7 +189,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long b2 = Utils.unpack_dd(buffer);
         long pc = Utils.unpack_dq(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("requestResetProgramCounter tid={}, b1={}, b2={}, pc=0x{}", tid, b1, b2, Long.toHexString(pc));
+            log.debug("requestResetProgramCounter tid=" + tid + ", b1=" + b1 + ", b2=" + b2 + ", pc=0x" + Long.toHexString(pc));
         }
         notifyDebugEvent();
     }
@@ -255,7 +255,8 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
             long value = Utils.unpack_dq(buffer);
 
             if (log.isDebugEnabled()) {
-                log.debug("requestBreakPointAction action={}, b2={}, address=0x{}, b3={}, size={}, value=0x{}", action, b2, Long.toHexString(address), b3, size, Long.toHexString(value));
+                log.debug("requestBreakPointAction action=" + action + ", b2=" + b2 + ", address=0x" + Long.toHexString(address) + ", b3=" + b3 +
+                        ", size=" + size + ", value=0x" + Long.toHexString(value));
             }
 
             address -= 1;
@@ -297,7 +298,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
 
     private void requestMemoryRegions(ByteBuffer buffer) {
         if (log.isDebugEnabled()) {
-            log.debug("requestMemoryRegions buffer={}", buffer);
+            log.debug("requestMemoryRegions buffer=" + buffer);
         }
 
         Memory memory = emulator.getMemory();
@@ -340,7 +341,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long tid = Utils.unpack_dd(buffer);
         long b = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("requestReadRegisters tid=0x{}, b={}", Long.toHexString(tid), b);
+            log.debug("requestReadRegisters tid=0x" + Long.toHexString(tid) + ", b=" + b);
         }
 
         if (emulator.is32Bit()) {
@@ -386,7 +387,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
 
     private void requestSymbols(ByteBuffer buffer) {
         if (log.isDebugEnabled()) {
-            log.debug("requestSymbols buffer={}", buffer);
+            log.debug("requestSymbols buffer=" + buffer);
         }
         sendAck();
     }
@@ -395,7 +396,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long address = Utils.unpack_dq(buffer);
         long size = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("requestReadMemory address=0x{}, size={}", Long.toHexString(address), size);
+            log.debug("requestReadMemory address=0x" + Long.toHexString(address) + ", size=" + size);
         }
         try {
             Backend backend = emulator.getBackend();
@@ -406,7 +407,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
             sendAck(Utils.flipBuffer(newBuf));
         } catch (BackendException e) {
             if (log.isDebugEnabled()) {
-                log.debug("read memory failed: address=0x{}", Long.toHexString(address), e);
+                log.debug("read memory failed: address=0x" + Long.toHexString(address), e);
             }
             sendAck();
         }
@@ -420,7 +421,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
             String sig = Utils.readCString(buffer);
             String desc = Utils.readCString(buffer);
             if (log.isDebugEnabled()) {
-                log.debug("signal index={}, mask=0x{}, sig={}, desc={}", index, Long.toHexString(mask), sig, desc);
+                log.debug("signal index=" + index + ", mask=0x" + Long.toHexString(mask) + ", sig=" + sig + ", desc=" + desc);
             }
         }
         sendAck();
@@ -431,7 +432,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
     private void syncDebuggerEvent(ByteBuffer buffer) {
         long b = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("syncDebuggerEvent b={}", b);
+            log.debug("syncDebuggerEvent b=" + b);
         }
 
         DebuggerEvent event = eventQueue.poll();
@@ -463,7 +464,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
                 notifyProcessStatus(buffer);
                 break;
             default:
-                log.warn("onDebuggerEvent type=0x{}", Integer.toHexString(type));
+                log.warn("onDebuggerEvent type=0x" + Integer.toHexString(type));
                 break;
         }
         notifyDebugEvent();
@@ -474,7 +475,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long tid = Utils.unpack_dd(buffer);
         long pc = Utils.unpack_dq(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("notifyProcessSingleStep pid={}, tid={}, pc=0x{}", pid, tid, Long.toHexString(pc));
+            log.debug("notifyProcessSingleStep pid=" + pid + ", tid=" + tid + ", pc=0x" + Long.toHexString(pc));
         }
 
         resumeRun();
@@ -487,7 +488,8 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long b2 = Utils.unpack_dd(buffer);
         long b3 = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("notifyProcessStatus pid={}, tid={}, b1={}, b2={}, b3={}", pid, tid, b1, b2, b3);
+            log.debug("notifyProcessStatus pid=" + pid + ", tid=" + tid + ", b1=" + b1 +
+                    ", b2=" + b2 + ", b3=" + b3);
         }
     }
 
@@ -499,7 +501,8 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long b3 = Utils.unpack_dd(buffer);
         long exitStatus = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("notifyProcessExit pid={}, tid={}, b1={}, b2={}, b3={}, exitStatus={}", pid, tid, b1, b2, b3, exitStatus);
+            log.debug("notifyProcessExit pid=" + pid + ", tid=" + tid + ", b1=" + b1 +
+                    ", b2=" + b2 + ", b3=" + b3 + ", exitStatus=" + exitStatus);
         }
         this.processExitStatus = (int) exitStatus;
     }
@@ -517,7 +520,9 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long size = Utils.unpack_dq(buffer);
         long test = Utils.unpack_dq(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("notifyProcessEvent type=0x{}, pid={}, tid={}, pc=0x{}, b2={}, executable={}, base=0x{}, size=0x{}, test=0x{}", Integer.toHexString(type), pid, tid, Long.toHexString(pc), b2, executable, Long.toHexString(base), Long.toHexString(size), Long.toHexString(test));
+            log.debug("notifyProcessEvent type=0x" + Integer.toHexString(type) + ", pid=" + pid + ", tid=" + tid + ", pc=0x" + Long.toHexString(pc) +
+                    ", b2=" + b2 + ", executable=" + executable + ", base=0x" + Long.toHexString(base) + ", size=0x" + Long.toHexString(size) +
+                    ", test=0x" + Long.toHexString(test));
         }
 
         if (type == 0x400) {
@@ -535,7 +540,10 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         long size = Utils.unpack_dq(buffer);
         long l1 = Utils.unpack_dq(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("notifyLoadModule pid={}, tid={}, address=0x{}, s1={}, path={}, base=0x{}, size=0x{}, l1=0x{}", pid, tid, Long.toHexString(address), s1, path, Long.toHexString(base), Long.toHexString(size), Long.toHexString(l1));
+            log.debug("notifyLoadModule pid=" + pid + ", tid=" + tid +
+                    ", address=0x" + Long.toHexString(address) + ", s1=" + s1 + ", path=" + path +
+                    ", base=0x" + Long.toHexString(base) + ", size=0x" + Long.toHexString(size) +
+                    ", l1=0x" + Long.toHexString(l1));
         }
     }
 
@@ -544,7 +552,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
         int value = (int) Utils.unpack_dd(buffer);
         long b = Utils.unpack_dd(buffer);
         if (log.isDebugEnabled()) {
-            log.debug("requestAttach pid={}, value={}, b={}", pid, value, b);
+            log.debug("requestAttach pid=" + pid + ", value=" + value + ", b=" + b);
         }
 
         List<Module> modules = new ArrayList<>(emulator.getMemory().getLoadedModules());
@@ -575,7 +583,7 @@ public class AndroidServer extends AbstractDebugServer implements ModuleListener
     @Override
     protected void onHitBreakPoint(Emulator<?> emulator, long address) {
         if (log.isDebugEnabled()) {
-            log.debug("onHitBreakPoint address=0x{}", Long.toHexString(address));
+            log.debug("onHitBreakPoint address=0x" + Long.toHexString(address));
         }
 
         if (isDebuggerConnected()) {

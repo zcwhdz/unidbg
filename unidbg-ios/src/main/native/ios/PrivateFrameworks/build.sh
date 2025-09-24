@@ -12,7 +12,4 @@ function build_framework() {
   mv "$1"/"$1" ../../../resources/ios/7.1/System/Library/PrivateFrameworks/"$1".framework/
 }
 
-build_framework FindMyDevice "Foundation"
-build_framework ManagedConfiguration "Foundation"
-build_framework MobileSystemServices "Foundation"
-build_framework CrashReporterSupport "Foundation"
+build_framework Network "Foundation"

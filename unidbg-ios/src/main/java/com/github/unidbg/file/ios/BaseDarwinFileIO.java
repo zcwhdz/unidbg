@@ -5,7 +5,15 @@ import com.github.unidbg.Emulator;
 import com.github.unidbg.file.BaseFileIO;
 import com.github.unidbg.file.UnidbgFileFilter;
 import com.github.unidbg.ios.file.DirectoryFileIO;
-import com.github.unidbg.ios.struct.attr.*;
+import com.github.unidbg.ios.struct.attr.AttrList;
+import com.github.unidbg.ios.struct.attr.AttrReference;
+import com.github.unidbg.ios.struct.attr.AttributeSet;
+import com.github.unidbg.ios.struct.attr.Dev;
+import com.github.unidbg.ios.struct.attr.FinderInfo;
+import com.github.unidbg.ios.struct.attr.Fsid;
+import com.github.unidbg.ios.struct.attr.ObjId;
+import com.github.unidbg.ios.struct.attr.ObjType;
+import com.github.unidbg.ios.struct.attr.UserAccess;
 import com.github.unidbg.ios.struct.kernel.StatFS;
 import com.github.unidbg.pointer.UnidbgStructure;
 import com.github.unidbg.unix.UnixEmulator;
@@ -13,8 +21,8 @@ import com.github.unidbg.unix.struct.TimeSpec32;
 import com.sun.jna.Pointer;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,7 +34,7 @@ import java.util.List;
 
 public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileIO {
 
-    private static final Logger log = LoggerFactory.getLogger(BaseDarwinFileIO.class);
+    private static final Log log = LogFactory.getLog(BaseDarwinFileIO.class);
 
     public static File createAttrFile(File dest) {
         if (!dest.exists()) {
@@ -175,27 +183,11 @@ public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileI
         if ((attributeSet.commonattr & ATTR_CMN_USERACCESS) != 0) {
             UserAccess userAccess = new UserAccess(pointer);
             userAccess.mode = X_OK | W_OK | R_OK;
-            pointer = pointer.share(userAccess.size());
+//            pointer = pointer.share(userAccess.size());
             list.add(userAccess);
             attributeSet.commonattr &= ~ATTR_CMN_USERACCESS;
             if (returnedAttributeSet != null) {
                 returnedAttributeSet.commonattr |= ATTR_CMN_USERACCESS;
-            }
-        }
-        if ((attributeSet.volattr & ATTR_VOL_INFO) != 0) {
-            if (returnedAttributeSet == null) {
-                returnedAttributeSet = new AttributeSet(pointer);
-            }
-            attributeSet.volattr &= ~ATTR_VOL_INFO;
-        }
-        if ((attributeSet.volattr & ATTR_VOL_SPACEUSED) != 0) {
-            SpaceUsed spaceUsed = new SpaceUsed(pointer);
-            spaceUsed.spaceused = getVolSpaceUsed();
-//            pointer = pointer.share(spaceUsed.size());
-            list.add(spaceUsed);
-            attributeSet.volattr &= ~ATTR_VOL_SPACEUSED;
-            if (returnedAttributeSet != null) {
-                returnedAttributeSet.volattr |= ATTR_VOL_SPACEUSED;
             }
         }
         if (attributeSet.commonattr != 0 || attributeSet.volattr != 0 ||
@@ -225,10 +217,6 @@ public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileI
         return 0;
     }
 
-    protected long getVolSpaceUsed() {
-        return 0x123456789abL;
-    }
-
     @Override
     public int setattrlist(AttrList attrList, Pointer attrBuf, int attrBufSize) {
         if (attrList.bitmapcount != ATTR_BIT_MAP_COUNT) {
@@ -240,7 +228,7 @@ public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileI
             TimeSpec32 timeSpec = new TimeSpec32(pointer);
             pointer = pointer.share(timeSpec.size());
             if (log.isDebugEnabled()) {
-                log.debug("setattrlist ATTR_CMN_CRTIME timeSpec={}, pointer={}", timeSpec, pointer);
+                log.debug("setattrlist timeSpec=" + timeSpec + ", pointer=" + pointer);
             }
             attributeSet.commonattr &= ~ATTR_CMN_CRTIME;
         }
@@ -248,7 +236,7 @@ public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileI
             TimeSpec32 timeSpec = new TimeSpec32(pointer);
             pointer = pointer.share(timeSpec.size());
             if (log.isDebugEnabled()) {
-                log.debug("setattrlist ATTR_CMN_MODTIME timeSpec={}, pointer={}", timeSpec, pointer);
+                log.debug("setattrlist timeSpec=" + timeSpec + ", pointer=" + pointer);
             }
             attributeSet.commonattr &= ~ATTR_CMN_MODTIME;
         }
@@ -256,7 +244,7 @@ public abstract class BaseDarwinFileIO extends BaseFileIO implements DarwinFileI
             FinderInfo finderInfo = new FinderInfo(pointer);
             pointer = pointer.share(finderInfo.size());
             if (log.isDebugEnabled()) {
-                log.debug("setattrlist finderInfo={}, pointer={}", finderInfo, pointer);
+                log.debug("setattrlist finderInfo=" + finderInfo + ", pointer=" + pointer);
             }
             attributeSet.commonattr &= ~ATTR_CMN_FNDRINFO;
         }

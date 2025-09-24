@@ -22,22 +22,20 @@ import keystone.Keystone;
 import keystone.KeystoneArchitecture;
 import keystone.KeystoneEncoded;
 import keystone.KeystoneMode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
-import java.security.SecureRandom;
 import java.util.Arrays;
 
 public class SymbolResolver implements HookListener {
 
-    private static final Logger log = LoggerFactory.getLogger(SymbolResolver.class);
+    private static final Log log = LogFactory.getLog(SymbolResolver.class);
 
     private final Emulator<DarwinFileIO> emulator;
     private UnidbgPointer _os_unfair_lock_lock, _os_unfair_lock_unlock;
     private UnidbgPointer _objc_readClassPair;
     private UnidbgPointer _objc_unsafeClaimAutoreleasedReturnValue;
     private UnidbgPointer __tlv_bootstrap;
-    private UnidbgPointer _getentropy;
 
     private UnidbgPointer __dispatch_source_type_memorypressure;
     private UnidbgPointer dispatch_source_type_memorypressure_init;
@@ -55,10 +53,6 @@ public class SymbolResolver implements HookListener {
     private UnidbgPointer _dispatch_get_global_queue;
     private UnidbgPointer _dispatch_group_async;
 
-    private UnidbgPointer __shared_mutex_base$$__shared_mutex_base;
-    private UnidbgPointer __shared_mutex_base$$lock_shared;
-    private UnidbgPointer __shared_mutex_base$$unlock_shared;
-
     public SymbolResolver(Emulator<DarwinFileIO> emulator) {
         this.emulator = emulator;
     }
@@ -73,78 +67,9 @@ public class SymbolResolver implements HookListener {
 
     @Override
     public long hook(final SvcMemory svcMemory, String libraryName, String symbolName, final long old) {
-        if ("_getentropy".equals(symbolName)) {
-            if (emulator.is64Bit()) {
-                if (_getentropy == null) {
-                    _getentropy = svcMemory.registerSvc(new Arm64Svc("_getentropy") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            Pointer buf = context.getPointerArg(0);
-                            int size = context.getIntArg(1);
-                            byte[] bytes = new byte[size];
-                            new SecureRandom().nextBytes(bytes);
-                            buf.write(0, bytes, 0, bytes.length);
-                            return 0;
-                        }
-                    });
-                }
-            } else {
-                throw new UnsupportedOperationException();
-            }
-            return _getentropy.peer;
-        }
-        if ("__ZNSt3__119__shared_mutex_baseC1Ev".equals(symbolName)) {
-            if (emulator.is64Bit()) {
-                if (__shared_mutex_base$$__shared_mutex_base == null) {
-                    __shared_mutex_base$$__shared_mutex_base = svcMemory.registerSvc(new Arm64Svc("std::__shared_mutex_base::__shared_mutex_base(void)") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            log.info("std::__shared_mutex_base::__shared_mutex_base({})", context.getPointerArg(0));
-                            return 0;
-                        }
-                    });
-                }
-            } else {
-                throw new UnsupportedOperationException();
-            }
-            return __shared_mutex_base$$__shared_mutex_base.peer;
-        }
-        if ("__ZNSt3__119__shared_mutex_base11lock_sharedEv".equals(symbolName)) {
-            if (emulator.is64Bit()) {
-                if (__shared_mutex_base$$lock_shared == null) {
-                    __shared_mutex_base$$lock_shared = svcMemory.registerSvc(new Arm64Svc("std::__shared_mutex_base::lock_shared(void)") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            log.info("std::__shared_mutex_base::lock_shared({})", context.getPointerArg(0));
-                            return 0;
-                        }
-                    });
-                }
-            } else {
-                throw new UnsupportedOperationException();
-            }
-            return __shared_mutex_base$$lock_shared.peer;
-        }
-        if ("__ZNSt3__119__shared_mutex_base13unlock_sharedEv".equals(symbolName)) {
-            if (emulator.is64Bit()) {
-                if (__shared_mutex_base$$unlock_shared == null) {
-                    __shared_mutex_base$$unlock_shared = svcMemory.registerSvc(new Arm64Svc("std::__shared_mutex_base::unlock_shared(void)") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            log.info("std::__shared_mutex_base::unlock_shared({})", context.getPointerArg(0));
-                            return 0;
-                        }
-                    });
-                }
-            } else {
-                throw new UnsupportedOperationException();
-            }
-            return __shared_mutex_base$$unlock_shared.peer;
-        }
+        /*if (symbolName.contains("dispatch_block_create")) {
+            System.out.println("libraryName=" + libraryName + ", symbolName=" + symbolName + ", old=0x" + Long.toHexString(old));
+        }*/
         if ("_dispatch_sync".equals(symbolName) && "libdispatch.dylib".equals(libraryName)) {
             old_dispatch_sync = old;
         }
@@ -163,7 +88,7 @@ public class SymbolResolver implements HookListener {
                             Pointer group = context.getPointerArg(0);
                             UnidbgPointer queue = context.getPointerArg(1);
                             UnidbgPointer block = context.getPointerArg(2);
-                            log.info("Patch64 dispatch_group_async to dispatch_sync group={}, queue={}, block={}, LR={}", group, queue, block, context.getLRPointer());
+                            log.info("Patch dispatch_group_async to dispatch_sync group=" + group + ", queue=" + queue + ", block=" + block + ", LR=" + context.getLRPointer());
                             context.setXLong(0, queue == null ? 0 : queue.peer);
                             context.setXLong(1, block == null ? 0 : block.peer);
                             return HookStatus.RET(emulator, old_dispatch_sync);
@@ -177,7 +102,7 @@ public class SymbolResolver implements HookListener {
                             Pointer group = context.getPointerArg(0);
                             UnidbgPointer queue = context.getPointerArg(1);
                             UnidbgPointer block = context.getPointerArg(2);
-                            log.info("Patch32 dispatch_group_async to dispatch_sync group={}, queue={}, block={}, LR={}", group, queue, block, context.getLRPointer());
+                            log.info("Patch dispatch_group_async to dispatch_sync group=" + group + ", queue=" + queue + ", block=" + block + ", LR=" + context.getLRPointer());
                             context.setR0(queue == null ? 0 : queue.toIntPeer());
                             context.setR1(block == null ? 0 : block.toIntPeer());
                             return HookStatus.RET(emulator, old_dispatch_sync);
@@ -197,7 +122,7 @@ public class SymbolResolver implements HookListener {
                             int identifier = context.getIntArg(0);
                             int flags = context.getIntArg(1);
                             if (log.isDebugEnabled()) {
-                                log.debug("dispatch_get_global_queue64 identifier=0x{}, flags=0x{}", Integer.toHexString(identifier), Integer.toHexString(flags));
+                                log.debug("dispatch_get_global_queue identifier=0x" + Integer.toHexString(identifier) + ", flags=0x" + Integer.toHexString(flags));
                             }
                             int QOS_CLASS_USER_INTERACTIVE = 0x21;
                             int QOS_CLASS_USER_INITIATED = 0x19;
@@ -223,7 +148,7 @@ public class SymbolResolver implements HookListener {
                             int identifier = context.getIntArg(0);
                             int flags = context.getIntArg(1);
                             if (log.isDebugEnabled()) {
-                                log.debug("dispatch_get_global_queue32 identifier=0x{}, flags=0x{}", Integer.toHexString(identifier), Integer.toHexString(flags));
+                                log.debug("dispatch_get_global_queue identifier=0x" + Integer.toHexString(identifier) + ", flags=0x" + Integer.toHexString(flags));
                             }
                             int QOS_CLASS_USER_INTERACTIVE = 0x21;
                             int QOS_CLASS_USER_INITIATED = 0x19;
@@ -253,7 +178,7 @@ public class SymbolResolver implements HookListener {
                         RegisterContext context = emulator.getContext();
                         int flags = context.getIntArg(0);
                         UnidbgPointer block = context.getPointerArg(1);
-                        log.info("_dispatch_block_create flags=0x{}, block={}", Integer.toHexString(flags), block);
+                        log.info("_dispatch_block_create flags=0x" + Integer.toHexString(flags) + ", block=" + block);
                         return block == null ? 0 : block.peer;
                     }
                 });
@@ -266,7 +191,7 @@ public class SymbolResolver implements HookListener {
                     @Override
                     public long handle(Emulator<?> emulator) {
                         RegisterContext context = emulator.getContext();
-                        log.info("_dispatch_assert_queue$V2 queue={}", context.getPointerArg(0));
+                        log.info("_dispatch_assert_queue$V2 queue=" + context.getPointerArg(0));
                         return 0;
                     }
                 });
@@ -279,7 +204,7 @@ public class SymbolResolver implements HookListener {
                     @Override
                     public long handle(Emulator<?> emulator) {
                         RegisterContext context = emulator.getContext();
-                        log.info("_dispatch_assert_queue_not$V2 queue={}", context.getPointerArg(0));
+                        log.info("_dispatch_assert_queue_not$V2 queue=" + context.getPointerArg(0));
                         return 0;
                     }
                 });
@@ -307,7 +232,7 @@ public class SymbolResolver implements HookListener {
                         int __qos_class = context.getIntArg(0);
                         int __relative_priority = context.getIntArg(1);
                         if (log.isDebugEnabled()) {
-                            log.debug("_pthread_set_qos_class_self_np __qos_class={}, __relative_priority={}", __qos_class, __relative_priority);
+                            log.debug("_pthread_set_qos_class_self_np __qos_class=" + __qos_class + ", __relative_priority=" + __relative_priority);
                         }
                         return 0;
                     }
@@ -325,7 +250,7 @@ public class SymbolResolver implements HookListener {
                         int __qos_class = context.getIntArg(1);
                         int __relative_priority = context.getIntArg(2);
                         if (log.isDebugEnabled()) {
-                            log.debug("_pthread_attr_set_qos_class_np __attr={}, __qos_class={}, __relative_priority={}", __attr, __qos_class, __relative_priority);
+                            log.debug("_pthread_attr_set_qos_class_np __attr=" + __attr + ", __qos_class=" + __qos_class + ", __relative_priority=" + __relative_priority);
                         }
                         return 0;
                     }
@@ -345,7 +270,7 @@ public class SymbolResolver implements HookListener {
                         long tv_sec = offset / 1000000000L;
                         long tv_nsec = offset % 1000000000L;
                         if (log.isDebugEnabled()) {
-                            log.debug("clock_gettime clk_id={}, tp={}, offset={}, tv_sec={}, tv_nsec={}", clk_id, tp, offset, tv_sec, tv_nsec);
+                            log.debug("clock_gettime clk_id=" + clk_id + ", tp=" + tp + ", offset=" + offset + ", tv_sec=" + tv_sec + ", tv_nsec=" + tv_nsec);
                         }
                         switch (clk_id) {
                             case CLOCK_REALTIME:
@@ -439,119 +364,120 @@ public class SymbolResolver implements HookListener {
             }
             return __dispatch_source_type_memorypressure.peer;
         }
-        switch (symbolName) {
-            case "_objc_unsafeClaimAutoreleasedReturnValue":
-                if (_objc_unsafeClaimAutoreleasedReturnValue == null) {
-                    _objc_unsafeClaimAutoreleasedReturnValue = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("objc_unsafeClaimAutoreleasedReturnValue") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            return context.getLongArg(0);
+        if ("_objc_unsafeClaimAutoreleasedReturnValue".equals(symbolName)) {
+            if (_objc_unsafeClaimAutoreleasedReturnValue == null) {
+                _objc_unsafeClaimAutoreleasedReturnValue = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("objc_unsafeClaimAutoreleasedReturnValue") {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        RegisterContext context = emulator.getContext();
+                        return context.getLongArg(0);
+                    }
+                } : new ArmSvc() {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        RegisterContext context = emulator.getContext();
+                        return context.getIntArg(0);
+                    }
+                });
+            }
+            return _objc_unsafeClaimAutoreleasedReturnValue.peer;
+        }
+        if ("_os_unfair_lock_lock".equals(symbolName)) {
+            if (_os_unfair_lock_lock == null) {
+                _os_unfair_lock_lock = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("os_unfair_lock_lock") {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        return 0;
+                    }
+                } : new ArmSvc() {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        return 0;
+                    }
+                });
+            }
+            return _os_unfair_lock_lock.peer;
+        }
+        if ("_os_unfair_lock_unlock".equals(symbolName)) {
+            if (_os_unfair_lock_unlock == null) {
+                _os_unfair_lock_unlock = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("os_unfair_lock_unlock") {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        return 0;
+                    }
+                } : new ArmSvc() {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        return 0;
+                    }
+                });
+            }
+            return _os_unfair_lock_unlock.peer;
+        }
+        if ("__tlv_bootstrap".equals(symbolName)) {
+            if (__tlv_bootstrap == null) {
+                __tlv_bootstrap = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("tlv_bootstrap") {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        RegisterContext context = emulator.getContext();
+                        UnidbgPointer self = context.getPointerArg(0);
+                        UnidbgPointer var = self.getPointer(8);
+                        if (var == null) {
+                            long size = self.getLong(16);
+                            MemoryBlock block = emulator.getMemory().malloc((int) size, true);
+                            var = block.getPointer();
+                            self.setPointer(8, var);
                         }
-                    } : new ArmSvc() {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            return context.getIntArg(0);
+                        return var.peer;
+                    }
+                } : new ArmSvc() {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        throw new UnsupportedOperationException();
+                    }
+                });
+            }
+            return __tlv_bootstrap.peer;
+        }
+        if ("_objc_readClassPair".equals(symbolName)) {
+            if (_objc_readClassPair == null) {
+                _objc_readClassPair = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("objc_readClassPair") {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override
+                    public UnidbgPointer onRegister(SvcMemory svcMemory, int svcNumber) {
+                        try (Keystone keystone = new Keystone(KeystoneArchitecture.Arm64, KeystoneMode.LittleEndian)) {
+                            KeystoneEncoded encoded = keystone.assemble(Arrays.asList(
+                                    "nop",
+                                    "ret"));
+                            byte[] code = encoded.getMachineCode();
+                            UnidbgPointer pointer = svcMemory.allocate(code.length, "objc_readClassPair");
+                            pointer.write(0, code, 0, code.length);
+                            return pointer;
                         }
-                    });
-                }
-                return _objc_unsafeClaimAutoreleasedReturnValue.peer;
-            case "_os_unfair_lock_lock":
-                if (_os_unfair_lock_lock == null) {
-                    _os_unfair_lock_lock = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("os_unfair_lock_lock") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            return 0;
+                    }
+                } : new ArmSvc() {
+                    @Override
+                    public long handle(Emulator<?> emulator) {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override
+                    public UnidbgPointer onRegister(SvcMemory svcMemory, int svcNumber) {
+                        try (Keystone keystone = new Keystone(KeystoneArchitecture.Arm, KeystoneMode.Arm)) {
+                            KeystoneEncoded encoded = keystone.assemble(Arrays.asList(
+                                    "nop",
+                                    "bx lr"));
+                            byte[] code = encoded.getMachineCode();
+                            UnidbgPointer pointer = svcMemory.allocate(code.length, "objc_readClassPair");
+                            pointer.write(0, code, 0, code.length);
+                            return pointer;
                         }
-                    } : new ArmSvc() {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            return 0;
-                        }
-                    });
-                }
-                return _os_unfair_lock_lock.peer;
-            case "_os_unfair_lock_unlock":
-                if (_os_unfair_lock_unlock == null) {
-                    _os_unfair_lock_unlock = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("os_unfair_lock_unlock") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            return 0;
-                        }
-                    } : new ArmSvc() {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            return 0;
-                        }
-                    });
-                }
-                return _os_unfair_lock_unlock.peer;
-            case "__tlv_bootstrap":
-                if (__tlv_bootstrap == null) {
-                    __tlv_bootstrap = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("tlv_bootstrap") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            RegisterContext context = emulator.getContext();
-                            UnidbgPointer self = context.getPointerArg(0);
-                            UnidbgPointer var = self.getPointer(8);
-                            if (var == null) {
-                                long size = self.getLong(16);
-                                MemoryBlock block = emulator.getMemory().malloc((int) size, true);
-                                var = block.getPointer();
-                                self.setPointer(8, var);
-                            }
-                            return var.peer;
-                        }
-                    } : new ArmSvc() {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            throw new UnsupportedOperationException();
-                        }
-                    });
-                }
-                return __tlv_bootstrap.peer;
-            case "_objc_readClassPair":
-                if (_objc_readClassPair == null) {
-                    _objc_readClassPair = svcMemory.registerSvc(emulator.is64Bit() ? new Arm64Svc("objc_readClassPair") {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            throw new UnsupportedOperationException();
-                        }
-
-                        @Override
-                        public UnidbgPointer onRegister(SvcMemory svcMemory, int svcNumber) {
-                            try (Keystone keystone = new Keystone(KeystoneArchitecture.Arm64, KeystoneMode.LittleEndian)) {
-                                KeystoneEncoded encoded = keystone.assemble(Arrays.asList(
-                                        "nop",
-                                        "ret"));
-                                byte[] code = encoded.getMachineCode();
-                                UnidbgPointer pointer = svcMemory.allocate(code.length, "objc_readClassPair");
-                                pointer.write(0, code, 0, code.length);
-                                return pointer;
-                            }
-                        }
-                    } : new ArmSvc() {
-                        @Override
-                        public long handle(Emulator<?> emulator) {
-                            throw new UnsupportedOperationException();
-                        }
-
-                        @Override
-                        public UnidbgPointer onRegister(SvcMemory svcMemory, int svcNumber) {
-                            try (Keystone keystone = new Keystone(KeystoneArchitecture.Arm, KeystoneMode.Arm)) {
-                                KeystoneEncoded encoded = keystone.assemble(Arrays.asList(
-                                        "nop",
-                                        "bx lr"));
-                                byte[] code = encoded.getMachineCode();
-                                UnidbgPointer pointer = svcMemory.allocate(code.length, "objc_readClassPair");
-                                pointer.write(0, code, 0, code.length);
-                                return pointer;
-                            }
-                        }
-                    });
-                }
-                return old == WEAK_BIND ? _objc_readClassPair.peer : 0;
+                    }
+                });
+            }
+            return old == WEAK_BIND ? _objc_readClassPair.peer : 0;
         }
         return 0;
     }

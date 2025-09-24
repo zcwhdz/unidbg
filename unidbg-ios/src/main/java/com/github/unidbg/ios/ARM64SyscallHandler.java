@@ -93,7 +93,11 @@ import com.github.unidbg.ios.struct.kernel.VmRegionRecurse64Reply;
 import com.github.unidbg.ios.struct.kernel.VmRegionRecurse64Request;
 import com.github.unidbg.ios.struct.kernel.VmRemapReply;
 import com.github.unidbg.ios.struct.kernel.VmRemapRequest;
-import com.github.unidbg.ios.struct.sysctl.*;
+import com.github.unidbg.ios.struct.sysctl.IfMsgHeader;
+import com.github.unidbg.ios.struct.sysctl.KInfoProc64;
+import com.github.unidbg.ios.struct.sysctl.SockAddrDL;
+import com.github.unidbg.ios.struct.sysctl.TaskDyldInfo;
+import com.github.unidbg.ios.struct.sysctl.TaskVmInfo64;
 import com.github.unidbg.memory.MemoryMap;
 import com.github.unidbg.memory.SvcMemory;
 import com.github.unidbg.pointer.UnidbgPointer;
@@ -112,13 +116,9 @@ import org.slf4j.LoggerFactory;
 import unicorn.Arm64Const;
 import unicorn.UnicornConst;
 
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -126,7 +126,8 @@ import java.util.concurrent.TimeUnit;
 import static com.github.unidbg.file.ios.DarwinFileIO.XATTR_CREATE;
 import static com.github.unidbg.file.ios.DarwinFileIO.XATTR_REPLACE;
 import static com.github.unidbg.ios.MachO.MAP_MY_FIXED;
-import static com.github.unidbg.ios.file.SocketIO.*;
+import static com.github.unidbg.ios.file.SocketIO.AF_LINK;
+import static com.github.unidbg.ios.file.SocketIO.AF_ROUTE;
 
 public class ARM64SyscallHandler extends DarwinSyscallHandler {
 
@@ -628,7 +629,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                     return;
                 case 0x80000000:
                     NR = backend.reg_read(Arm64Const.UC_ARM64_REG_X3).intValue();
-                    if (handleMachineDependentSyscall(emulator, NR)) {
+                    if(handleMachineDependentSyscall(emulator, NR)) {
                         return;
                     }
                 default:
@@ -1459,7 +1460,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
         FileResult<DarwinFileIO> result = resolve(emulator, pathname, IOConstants.O_RDONLY);
         if (result != null && result.isSuccess()) {
             if (verbose) {
-                System.out.printf("File stat '%s' from %s: %s%n", pathname, emulator.getContext().getLRPointer(), result.io.getClass().getName());
+                System.out.printf("File stat '%s' from %s%n", pathname, emulator.getContext().getLRPointer());
             }
             return result.io.fstat(emulator, new Stat64(statbuf));
         }
@@ -1669,7 +1670,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
             }
             info.pbsi_pid = pid;
             info.pbsi_status = ProcBsdShortInfo.SRUN;
-            info.pbsi_comm = Arrays.copyOf(Arrays.copyOf(processName.getBytes(), DarwinSyscall.MAXCOMLEN - 1), DarwinSyscall.MAXCOMLEN);
+            info.pbsi_comm = Arrays.copyOf(Arrays.copyOf(processName.getBytes(), DarwinSyscall.MAXCOMLEN-1), DarwinSyscall.MAXCOMLEN);
             info.pbsi_flags = 0x24090;
             info.pbsi_uid = 0;
             info.pbsi_ruid = 0;
@@ -1824,12 +1825,14 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
 
         int top = name.getInt(0);
         switch (top) {
-            case CTL_UNSPEC: {
+            case CTL_UNSPEC:
                 int action = name.getInt(4);
                 if (action == 3) {
                     byte[] bytes = set0.getByteArray(0, set1);
                     String sub = new String(bytes, StandardCharsets.UTF_8);
-                    log.debug("sysctl CTL_UNSPEC action={}, namelen={}, buffer={}, bufferSize={}, sub={}, set1={}", action, namelen, buffer, bufferSize, sub, set1);
+                    if (log.isDebugEnabled()) {
+                        log.debug("sysctl CTL_UNSPEC action={}, namelen={}, buffer={}, bufferSize={}, sub={}, set1={}", action, namelen, buffer, bufferSize, sub, set1);
+                    }
                     switch (sub) {
                         case "unidbg.debug":
                             return verbose || LoggerFactory.getLogger("com.github.unidbg.ios.debug").isDebugEnabled() ? 1 : 0;
@@ -1883,11 +1886,6 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                             buffer.setInt(4, HW_CPU_FAMILY);
                             bufferSize.setLong(0, 8);
                             return 0;
-                        case "hw.cpusubfamily":
-                            buffer.setInt(0, CTL_HW);
-                            buffer.setInt(4, HW_CPU_SUB_FAMILY);
-                            bufferSize.setLong(0, 8);
-                            return 0;
                         case "hw.ncpu":
                             buffer.setInt(0, CTL_HW);
                             buffer.setInt(4, HW_NCPU);
@@ -1905,61 +1903,27 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                             bufferSize.setLong(0, 8);
                             return 0;
                         case "sysctl.proc_native":
-                            buffer.setInt(0, CTL_UNSPEC);
-                            buffer.setInt(4, SYSCTL_PROC_NATIVE);
-                            bufferSize.setLong(0, 8);
-                            return 0;
-                        case "machdep.virtual_address_size":
-                            buffer.setInt(0, CTL_MACHDEP);
-                            buffer.setInt(4, VIRTUAL_ADDRESS_SIZE);
-                            bufferSize.setLong(0, 8);
-                            return 0;
-                        case "machdep.cpu.brand_string":
-                            buffer.setInt(0, CTL_MACHDEP);
-                            buffer.setInt(4, CPU_BRAND_STRING);
-                            bufferSize.setLong(0, CPU_BRAND.length());
-                            return 0;
-                        default: {
-                            if (sub.startsWith(HW_OPTIONAL_PREFIX)) {
-                                String optName = sub.substring(HW_OPTIONAL_PREFIX.length());
-                                Integer value = emulator.getBackend().getCpuFeatures().get(optName);
-                                if(value != null) {
-                                    buffer.setInt(0, CTL_HW);
-                                    buffer.setInt(4, HW_OPTIONAL);
-                                    buffer.setInt(8, value);
-                                    bufferSize.setLong(0, 12);
-                                    return 0;
-                                } else {
-                                    return -1;
-                                }
-                            }
-                            break;
-                        }
+                            return -1;
                     }
                     if (log.isDebugEnabled()) {
                         createBreaker(emulator).debug();
                     }
                     log.info("sysctl CTL_UNSPEC action={}, namelen={}, buffer={}, bufferSize={}, sub={}", action, namelen, buffer, bufferSize, sub);
                     return -1;
-                } else if (action == SYSCTL_PROC_NATIVE) {
-                    bufferSize.setLong(0, 4);
-                    buffer.setInt(0, 1);
-                    return 0;
                 }
                 log.info("sysctl CTL_UNSPEC action={}, namelen={}, buffer={}, bufferSize={}, set0={}, set1={}", action, namelen, buffer, bufferSize, set0, set1);
                 break;
-            }
-            case CTL_KERN: {
-                int action = name.getInt(4);
+            case CTL_KERN:
+                action = name.getInt(4);
                 String msg = "sysctl CTL_KERN action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
                 switch (action) {
                     case KERN_USRSTACK32:
                     case KERN_PROCARGS2:
-                        log.info("{}", msg);
+                        log.info(msg);
                         return 1;
                     case KERN_OSTYPE:
-                        log.debug("{}", msg);
-                        String osType = getKernelOsType();
+                        log.debug(msg);
+                        String osType = "Darwin";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, osType.length() + 1);
                         }
@@ -1968,8 +1932,8 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case KERN_OSRELEASE:
-                        log.debug("{}", msg);
-                        String osRelease = getKernelOsRelease();
+                        log.debug(msg);
+                        String osRelease = "7.1.2";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, osRelease.length() + 1);
                         }
@@ -1978,8 +1942,8 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case KERN_VERSION:
-                        log.debug("{}", msg);
-                        String version = getKernelVersion();
+                        log.debug(msg);
+                        String version = "Darwin Kernel Version 14.0.0: Sun Mar 29 19:47:37 PDT 2015; root:xnu-2784.20.34~2/RELEASE_ARM64_S5L8960X";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, version.length() + 1);
                         }
@@ -2013,8 +1977,8 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         log.info("{}, subType={}", msg, subType);
                         break;
                     case KERN_OSVERSION:
-                        log.debug("{}", msg);
-                        String osVersion = getBuildVersion();
+                        log.debug(msg);
+                        String osVersion = "9A127";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, osVersion.length() + 1);
                         }
@@ -2023,8 +1987,8 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case KERN_HOSTNAME:
-                        log.debug("{}", msg);
-                        String hostName = getKernelHostName();
+                        log.debug(msg);
+                        String hostName = "unidbg.local";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, hostName.length() + 1);
                         }
@@ -2057,20 +2021,19 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     default:
-                        log.info("{}", msg);
+                        log.info(msg);
                         if (log.isDebugEnabled()) {
                             createBreaker(emulator).debug();
                         }
                         break;
                 }
                 break;
-            }
-            case CTL_HW: {
-                int action = name.getInt(4);
-                String msg = "sysctl CTL_HW action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
+            case CTL_HW:
+                action = name.getInt(4);
+                msg = "sysctl CTL_HW action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
                 switch (action) {
                     case HW_MACHINE:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         String machine = getHwMachine();
                         if (bufferSize != null) {
                             bufferSize.setLong(0, machine.length() + 1);
@@ -2080,7 +2043,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case HW_MODEL:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         String model = "N53AP";
                         if (bufferSize != null) {
                             bufferSize.setLong(0, model.length() + 1);
@@ -2090,7 +2053,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case HW_NCPU:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         if (bufferSize != null) {
                             bufferSize.setLong(0, 4);
                         }
@@ -2099,7 +2062,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case HW_PAGESIZE:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         if (bufferSize != null) {
                             bufferSize.setLong(0, 4);
                         }
@@ -2108,7 +2071,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case HW_CPU_TYPE:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         if (bufferSize != null) {
                             bufferSize.setLong(0, 4);
                         }
@@ -2117,7 +2080,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                         }
                         return 0;
                     case HW_CPU_SUBTYPE:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         if (bufferSize != null) {
                             bufferSize.setLong(0, 4);
                         }
@@ -2125,22 +2088,13 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                             buffer.setInt(0, CPU_SUBTYPE_ARM_V7);
                         }
                         return 0;
-                    case HW_CPU_SUB_FAMILY:
-                        log.debug("{}", msg);
-                        if (bufferSize != null) {
-                            bufferSize.setLong(0, 4);
-                        }
-                        if (buffer != null) {
-                            buffer.setInt(0, CPUSUBFAMILY_ARM_HC_HD);
-                        }
-                        return 0;
                     case HW_CPU_FAMILY:
-                        log.debug("{}", msg);
+                        log.debug(msg);
                         if (bufferSize != null) {
                             bufferSize.setLong(0, 4);
                         }
                         if (buffer != null) {
-                            buffer.setInt(0, 0x37a09642);
+                            buffer.setInt(0, 933271106);
                         }
                         return 0;
                     case HW_MEMSIZE:
@@ -2169,95 +2123,36 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                             buffer.setInt(0, getHwNcpu());
                         }
                         return 0;
-                    case HW_OPTIONAL: {
-                        int value = name.getInt(8);
-                        if (bufferSize != null) {
-                            bufferSize.setLong(0, 4);
-                        }
-                        if (buffer != null) {
-                            buffer.setInt(0, value);
-                        }
-                        return 0;
-                    }
-                    case HW_CACHELINE:
-                    case HW_L1ICACHESIZE:
-                    case HW_L1DCACHESIZE:
-                    case HW_L2CACHESIZE:
-                    case HW_L3CACHESIZE:
-                        break;
                 }
-                log.info("{}", msg);
+                log.info(msg);
                 break;
-            }
-            case CTL_MACHDEP: {
-                int action = name.getInt(4);
-                String msg = "sysctl CTL_HW action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
-                if (action == VIRTUAL_ADDRESS_SIZE) {
-                    log.debug("{}", msg);
-                    bufferSize.setLong(0, 4);
-                    buffer.setInt(0, 47);
-                    return 0;
-                } else if (action == CPU_BRAND_STRING) {
-                    log.debug("{}", msg);
-                    if (bufferSize != null) {
-                        bufferSize.setLong(0, CPU_BRAND.length() + 1);
-                    }
-                    if (buffer != null) {
-                        buffer.setString(0, CPU_BRAND);
-                    }
-                    return 0;
-                }
-                log.info("{}", msg);
-                break;
-            }
-            case CTL_NET: {
-                int action = name.getInt(4); // AF_ROUTE
-                String msg = "sysctl CTL_NET action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
+            case CTL_NET:
+                action = name.getInt(4); // AF_ROUTE
+                msg = "sysctl CTL_NET action=" + action + ", namelen=" + namelen + ", buffer=" + buffer + ", bufferSize=" + bufferSize + ", set0=" + set0 + ", set1=" + set1;
                 int family = name.getInt(0xc); // AF_INET
                 int rt = name.getInt(0x10);
-                if (action == AF_ROUTE && rt == NET_RT_IFLIST) {
-                    log.debug("{}", msg);
+                if(action == AF_ROUTE && rt == NET_RT_IFLIST) {
+                    log.debug(msg);
                     try {
                         List<DarwinUtils.NetworkIF> networkIFList = DarwinUtils.getNetworkIFs(isVerbose());
                         int sizeOfSDL = UnidbgStructure.calculateSize(SockAddrDL.class);
-                        int sizeOfHDR = UnidbgStructure.calculateSize(IfMsgHeader.class);
-                        int sizeOfIfaHDR = UnidbgStructure.calculateSize(IfaMsgHeader.class);
-                        int sizeOfIN = UnidbgStructure.calculateSize(SockAddrIN.class);
-                        // 这种情况下是为了获取需要的内存大小，准确给出需要计算太过复杂，我们直接给一个大概的值
-                        if (bufferSize != null && buffer == null) {
-                            // 为什么是8? 因为 #define RTAX_MAX        8       /* size of array to allocate */
-                            bufferSize.setLong(0, (sizeOfSDL + sizeOfHDR + sizeOfHDR + sizeOfIN * 8L) * networkIFList.size());
+                        int entrySize = UnidbgStructure.calculateSize(IfMsgHeader.class) + sizeOfSDL;
+                        if (bufferSize != null) {
+                            bufferSize.setLong(0, (long) entrySize * networkIFList.size());
                         }
                         if (buffer != null) {
-                            long total = 0;
                             Pointer pointer = buffer;
                             short index = 0;
-                            int flags = 0;
                             for (DarwinUtils.NetworkIF networkIF : networkIFList) {
-                                NetworkInterface currentIF = networkIF.networkInterface;
-                                if (currentIF.isUp()) {
-                                    flags |= 1;
-                                }
-                                if (currentIF.isLoopback()) {
-                                    flags |= 0x8;
-                                }
-                                if (currentIF.supportsMulticast()) {
-                                    flags |= 0x8000;
-                                }
-                                // 还有很多无法获取的标志，如果通过c的话需要兼容多个平台，过于复杂，这里我们直接设置.
-                                flags |= 2; // IFF_BROADCAST
-                                flags |= 0x40; //IFF_RUNNING
                                 IfMsgHeader header = new IfMsgHeader(pointer);
-                                header.ifm_msglen = (short) (sizeOfHDR + sizeOfSDL);
+                                SockAddrDL sockAddr = new SockAddrDL(pointer.share(header.size()));
+                                header.ifm_msglen = (short) entrySize;
                                 header.ifm_version = 5;
                                 header.ifm_type = RTM_IFINFO;
-                                header.ifm_flags = flags;
                                 header.ifm_addrs = 0x10;
                                 header.ifm_index = ++index;
                                 header.ifm_data.ifi_type = 6; // ethernet
                                 header.pack();
-                                // sockaddr_dl
-                                SockAddrDL sockAddr = new SockAddrDL(pointer.share(sizeOfHDR));
                                 byte[] networkInterfaceName = networkIF.networkInterface.getName().getBytes();
                                 sockAddr.sdl_len = (byte) sizeOfSDL;
                                 sockAddr.sdl_family = AF_LINK;
@@ -2269,55 +2164,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                                 sockAddr.sdl_alen = (byte) macAddress.length;
                                 System.arraycopy(macAddress, 0, sockAddr.sdl_data, networkInterfaceName.length, macAddress.length);
                                 sockAddr.pack();
-                                pointer = pointer.share(sizeOfHDR + sizeOfSDL);
-                                total += sizeOfHDR + sizeOfSDL;
-
-                                Enumeration<InetAddress> addrs = networkIF.networkInterface.getInetAddresses();
-                                while (addrs.hasMoreElements()) {
-                                    InetAddress addr = addrs.nextElement();
-                                    if (addr instanceof Inet4Address) {
-                                        short len = (short) (sizeOfIfaHDR + sizeOfIN * 3);
-                                        byte[] ip = addr.getAddress();
-                                        // 继续添加
-                                        IfaMsgHeader hdr = new IfaMsgHeader(pointer);
-                                        hdr.ifam_msglen = len;
-                                        hdr.ifam_version = 5;
-                                        hdr.ifam_type = RTM_NEWADDR;
-                                        hdr.ifam_addrs = 0xa4; // 20, 是ip广播地址
-                                        hdr.ifam_flags = flags; // up
-                                        hdr.ifam_index = index; // 接口编号，乱写会崩溃
-                                        hdr.ifam_metric = 0;
-                                        hdr.pack();
-                                        // sockaddr_in
-                                        SockAddrIN in = new SockAddrIN(pointer.share(sizeOfIfaHDR));
-                                        in.sin_len = (byte) sizeOfIN;
-                                        in.sin_family = AF_INET; //2
-                                        in.sin_port = 0;
-                                        System.arraycopy(ip, 0, in.sin_addr, 0, 4);
-                                        in.pack();
-                                        // sockaddr_in
-                                        in = new SockAddrIN(pointer.share(sizeOfIfaHDR + sizeOfIN));
-                                        in.sin_len = (byte) sizeOfIN;
-                                        in.sin_family = AF_INET; //2
-                                        in.sin_port = 0;
-                                        System.arraycopy(ip, 0, in.sin_addr, 0, 4);
-                                        in.pack();
-                                        // sockaddr_in
-                                        in = new SockAddrIN(pointer.share(sizeOfIfaHDR + sizeOfIN + sizeOfIN));
-                                        in.sin_len = (byte) sizeOfIN;
-                                        in.sin_family = AF_INET; //2
-                                        in.sin_port = 0;
-                                        System.arraycopy(ip, 0, in.sin_addr, 0, 4);
-                                        in.pack();
-                                        pointer = pointer.share(len);
-                                        total += len;
-                                    }
-                                }
-
-                            }
-                            // 无论如何，既然传递进来buffer了，我们就写入实际的buffer size
-                            if (bufferSize != null) {
-                                bufferSize.setLong(0, total);
+                                pointer = pointer.share(entrySize);
                             }
                         }
                         return 0;
@@ -2329,7 +2176,6 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                 if (log.isDebugEnabled()) {
                     createBreaker(emulator).debug();
                 }
-            }
             default:
                 log.info("sysctl top={}, namelen={}, buffer={}, bufferSize={}, set0={}, set1={}", name.getInt(0), namelen, buffer, bufferSize, set0, set1);
                 break;
@@ -3522,12 +3368,14 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                 header.pack();
 
                 reply.body.msgh_descriptor_count = 1;
-                reply.act_list = UnidbgPointer.nativeValue(request);
+                reply.act_list = 0;
                 reply.mask = 0x2110000;
                 reply.act_listCnt = 0;
                 reply.pack();
 
-                log.debug("task_threads reply={}", reply);
+                if (log.isDebugEnabled()) {
+                    log.debug("task_threads reply={}", reply);
+                }
                 return MACH_MSG_SUCCESS;
             }
             case 1000: { // clock_get_time
@@ -4047,7 +3895,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
             } else {
                 log.debug(msg);
             }
-        } else if (LoggerFactory.getLogger("com.github.unidbg.ios.malloc").isDebugEnabled()) {
+        } else if(LoggerFactory.getLogger("com.github.unidbg.ios.malloc").isDebugEnabled()) {
             log.debug(msg);
         }
         return base;
@@ -4078,7 +3926,7 @@ public class ARM64SyscallHandler extends DarwinSyscallHandler {
                 }
                 emulator.getMemory().setErrno(UnixEmulator.EACCES);
                 return -1;
-            case AF_INET:
+            case SocketIO.AF_INET:
             case SocketIO.AF_INET6:
                 switch (type) {
                     case SocketIO.SOCK_STREAM:

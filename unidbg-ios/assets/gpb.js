@@ -1,5 +1,3 @@
-// see https://github.com/protocolbuffers/protobuf/blob/main/objectivec/GPBDescriptor.h
-
 const buildDataTypeMsgDef = function (field, name, isFieldTypeMap, enumDescriptors, dataType) {
     let buffer = "";
     switch (dataType) {
@@ -51,11 +49,12 @@ const buildDataTypeMsgDef = function (field, name, isFieldTypeMap, enumDescripto
         case 15: // GPBDataTypeMessage
             const msgClass = field.msgClass();
             buffer += msgClass;
+            if(isFieldTypeMap) {
+                buffer += "> ";
+            }
             break;
-        case 16: { // GPBDataTypeGroup
-            buffer += ("group " + field.msgClass());
+        case 16: // GPBDataTypeGroup
             break;
-        }
         case 17: // GPBDataTypeEnum
             const enumDescriptor = field.enumDescriptor();
             let enumName = enumDescriptor.name().toString();
@@ -70,9 +69,6 @@ const buildDataTypeMsgDef = function (field, name, isFieldTypeMap, enumDescripto
         default:
             console.warn("dataType=" + dataType)
             break;
-    }
-    if(isFieldTypeMap) {
-        buffer += ">";
     }
     return buffer;
 }
@@ -104,120 +100,7 @@ const buildEnumMsgDef = function (msgName, descriptor) {
     return buffer;
 }
 
-const buildDefaultValue = function (name, field, dataType) {
-    let buffer = " [default = ";
-    switch (dataType) {
-        case 0: {// GPBDataTypeBool
-            if (ptr(field.defaultValue()).toInt32() === 1) {
-                buffer += "true";
-            } else {
-                buffer += "false";
-            }
-            break;
-        }
-        case 3: // GPBDataTypeFloat
-        case 6: // GPBDataTypeDouble
-            const fm = Memory.alloc(4);
-            fm.writeU32(field.defaultValue());
-            buffer += fm.readFloat();
-            break;
-        case 7: { // GPBDataTypeInt32
-            const fm = Memory.alloc(4);
-            fm.writeU32(field.defaultValue());
-            buffer += fm.readInt();
-            break
-        }
-        case 8: // GPBDataTypeInt64
-            buffer += field.defaultValue();
-            break;
-        case 14: // GPBDataTypeString
-            buffer += ("\"" + new ObjC.Object(ptr(field.defaultValue())) + "\"");
-            break;
-        case 17: {// GPBDataTypeEnum
-            let prefix = name + "_";
-            const defaultEnumValue = ptr(field.defaultValue()).toInt32();
-            let defaultEnumName = null;
-            const descriptor = field.enumDescriptor();
-            const enumNameCount = descriptor.enumNameCount();
-            const ip = Memory.alloc(4);
-            for (let i = 0; i < enumNameCount; i++) {
-                const enumNameObject = descriptor.getEnumNameForIndex_(i);
-                let enumName = enumNameObject.toString();
-                prefix = descriptor.name() + "_";
-                if (enumName.startsWith(prefix)) {
-                    enumName = enumName.substring(prefix.length);
-                }
-                const status = descriptor.getValue_forEnumName_(ip, enumNameObject);
-                if (!status) {
-                    console.warn("buildDefaultValue read " + enumName + " value failed.")
-                }
-                if(defaultEnumValue === ip.readU32()) {
-                    defaultEnumName = enumName;
-                    break;
-                }
-            }
-            if(defaultEnumName) {
-                buffer += defaultEnumName;
-            }
-            break;
-        }
-        default: {
-            console.log(name + "." + field.name() + " has default value: " + field.defaultValue() + ", dataType=" + dataType);
-            break;
-        }
-    }
-    buffer += "]";
-    return buffer;
-}
-
-const GPBFieldTypeMap = 2;
-
-const buildMsgField = function (name, field, enumDescriptors, oneof) {
-    let buffer = "";
-    const fieldName = field.name();
-    const number = field.number();
-    const dataType = field.dataType();
-    const required = field.isRequired();
-    const optional = field.isOptional() && !oneof;
-    const fieldType = field.fieldType();
-    if (oneof) {
-        buffer += "  ";
-    }
-    buffer += "  ";
-
-    switch (fieldType) {
-        case 0: { // GPBFieldTypeSingle
-            if (required === optional) {
-                console.log("fieldName=" + fieldName + ", required=" + required);
-            }
-            if (optional) {
-                buffer += "optional ";
-            }
-            break;
-        }
-        case 1: { // GPBFieldTypeRepeated
-            buffer += "repeated ";
-            break;
-        }
-        case GPBFieldTypeMap: {
-            const mapKeyDataType = field.mapKeyDataType();
-            buffer += ("map<" + buildDataTypeMsgDef(field, name, false, enumDescriptors, mapKeyDataType) + ", ");
-            break;
-        }
-        default:
-            console.warn("fieldType=" + fieldType)
-            break;
-    }
-    buffer += buildDataTypeMsgDef(field, name, fieldType === GPBFieldTypeMap, enumDescriptors, dataType);
-    buffer += (" " + fieldName + " = " + number);
-    if (field.hasDefaultValue()) {
-        buffer += buildDefaultValue(name, field, dataType);
-    }
-    buffer += ";\n";
-    return buffer;
-}
-
-const buildMsgDef = function (descriptor, extensionNumber) {
+const buildMsgDef = function (descriptor) {
     const file = descriptor.file();
     const _package = file.package();
     const objcPrefix = file.objcPrefix();
@@ -226,52 +109,49 @@ const buildMsgDef = function (descriptor, extensionNumber) {
     const name = descriptor.name();
     buffer += ("message " + name + " {\n")
 
-    if (extensionNumber > 0) {
-        let extensionDescriptor = null;
-        for (const className in ObjC.classes) {
-            if (className.indexOf("Root") === -1) {
-                continue;
-            }
-            const cRootObject = ObjC.classes[className];
-            const extensionRegistryMethod = cRootObject["+ extensionRegistry"];
-            if (extensionRegistryMethod && (typeof extensionRegistryMethod === "function")) {
-                try {
-                    const extensionRegistry = cRootObject.extensionRegistry();
-                    extensionDescriptor = extensionRegistry.extensionForDescriptor_fieldNumber_(descriptor, int64(extensionNumber));
-                    if (extensionDescriptor) {
-                        console.log("className=" + className + ", singletonName=" + extensionDescriptor.singletonName() + ", msgClass=" + extensionDescriptor.msgClass());
-                    }
-                } catch(error) {
-                }
-            }
-        }
-    }
-
+    const GPBFieldTypeMap = 2;
     const enumDescriptors = [];
     const fields = descriptor.fields();
-    const oneofs = descriptor.oneofs();
     for (let i = 0; i < fields.count(); i++) {
         const field = fields.objectAtIndex_(i);
-        const containingOneof = field.containingOneof();
-        if (containingOneof === null) {
-            buffer += buildMsgField(name, field, enumDescriptors, false);
+        const fieldName = field.name();
+        const number = field.number();
+        const dataType = field.dataType();
+        const required = field.isRequired();
+        const optional = field.isOptional();
+        const fieldType = field.fieldType();
+        if (field.hasDefaultValue()) {
+            console.log(name + "." + fieldName + " has default value.")
         }
-    }
-    if (oneofs !== null) {
-        for(let i = 0; i < oneofs.count(); i++) {
-            const oneof = oneofs.objectAtIndex_(i);
-            const oneofName = oneof.name();
-            const oneofFields = oneof.fields();
-            if(oneofFields.count() > 0) {
-                buffer += "  oneof " + oneofName + " {\n";
-                for (let m = 0; m < oneofFields.count(); m++) {
-                    const field = oneofFields.objectAtIndex_(m);
-                    buffer += buildMsgField(name, field, enumDescriptors, true);
+        buffer += "  ";
+
+        switch (fieldType) {
+            case 0: { // GPBFieldTypeSingle
+                if (required === optional) {
+                    console.log("fieldName=" + fieldName + ", required=" + required);
                 }
-                buffer += "  }\n";
+                if (optional) {
+                    buffer += "optional ";
+                }
+                break;
             }
+            case 1: { // GPBFieldTypeRepeated
+                buffer += "repeated ";
+                break;
+            }
+            case GPBFieldTypeMap: {
+                const mapKeyDataType = field.mapKeyDataType();
+                buffer += ("map<" + buildDataTypeMsgDef(field, name, true, enumDescriptors, mapKeyDataType) + ", ");
+                break;
+            }
+            default:
+                console.warn("fieldType=" + fieldType)
+                break;
         }
+        buffer += buildDataTypeMsgDef(field, name, fieldType === GPBFieldTypeMap, enumDescriptors, dataType);
+        buffer += (" " + fieldName + " = " + number + ";\n");
     }
+
     buffer += "}";
 
     for (let m = 0; m < enumDescriptors.length; m++) {
@@ -283,7 +163,6 @@ const buildMsgDef = function (descriptor, extensionNumber) {
 
 const list_gpbs = function (filter) {
     console.log("Try list gpbs: " + filter)
-    let haveGPB = false;
     for (const className in ObjC.classes) {
         if (filter) {
             if (className.toLowerCase().indexOf(filter.toLowerCase()) === -1) {
@@ -297,34 +176,14 @@ const list_gpbs = function (filter) {
                 const descriptor = cGPBMessage.descriptor();
                 if (descriptor.className().toString() === "GPBDescriptor") {
                     console.log(cGPBMessage)
-                    haveGPB = true;
                 }
             } catch(error) {
             }
         }
     }
-    if (!haveGPB && filter) {
-        console.log("Try list classes: " + filter)
-        if (filter.startsWith("^")) {
-            const classArray = [];
-            const prefix = filter.substring(1);
-            for (const className in ObjC.classes) {
-                if(className.startsWith(prefix)) {
-                    classArray.push(className);
-                }
-            }
-            console.log("Found class: " + JSON.stringify(classArray));
-        } else {
-            for (const className in ObjC.classes) {
-                if (className.toLowerCase().indexOf(filter.toLowerCase()) !== -1) {
-                    console.log("Found class: " + className)
-                }
-            }
-        }
-    }
 };
 
-function gpbe(className, extensionNumber) {
+function gpb(className) {
     if (ObjC.available) {
         const cGPBMessage = ObjC.classes[className];
         if (cGPBMessage) {
@@ -332,7 +191,7 @@ function gpbe(className, extensionNumber) {
             if (descriptorMethod) {
                 const descriptor = cGPBMessage.descriptor();
                 if (descriptor.className().toString() === "GPBDescriptor") {
-                    console.log(buildMsgDef(descriptor, extensionNumber));
+                    console.log(buildMsgDef(descriptor));
                 } else {
                     console.log(cGPBMessage + " is not GPBDescriptor");
                     list_gpbs(className);
@@ -347,8 +206,4 @@ function gpbe(className, extensionNumber) {
     } else {
         console.log("Objc unavailable")
     }
-}
-
-function gpb(className) {
-    gpbe(className, 0);
 }

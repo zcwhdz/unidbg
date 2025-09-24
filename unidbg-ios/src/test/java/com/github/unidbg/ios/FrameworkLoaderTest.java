@@ -1,5 +1,6 @@
 package com.github.unidbg.ios;
 
+import com.github.unidbg.AbstractEmulator;
 import com.github.unidbg.Emulator;
 import com.github.unidbg.Module;
 import com.github.unidbg.arm.backend.DynarmicFactory;
@@ -30,6 +31,7 @@ import java.io.File;
 public class FrameworkLoaderTest implements EmulatorConfigurator, DispatchAsyncCallback, MsgSendCallback {
 
     public static void main(String[] args) throws Exception {
+        Logger.getLogger(AbstractEmulator.class).setLevel(Level.INFO);
         FrameworkLoaderTest test = new FrameworkLoaderTest();
         test.testLoader();
     }

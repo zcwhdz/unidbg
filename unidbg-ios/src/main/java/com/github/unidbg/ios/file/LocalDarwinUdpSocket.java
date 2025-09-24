@@ -4,12 +4,12 @@ import com.github.unidbg.Emulator;
 import com.github.unidbg.ios.struct.attr.AttrList;
 import com.github.unidbg.unix.UnixEmulator;
 import com.sun.jna.Pointer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 public class LocalDarwinUdpSocket extends LocalUdpSocket {
 
-    private static final Logger log = LoggerFactory.getLogger(LocalDarwinUdpSocket.class);
+    private static final Log log = LogFactory.getLog(LocalDarwinUdpSocket.class);
 
     public LocalDarwinUdpSocket(Emulator<?> emulator) {
         super(emulator);
@@ -18,7 +18,7 @@ public class LocalDarwinUdpSocket extends LocalUdpSocket {
     @Override
     public int connect(Pointer addr, int addrlen) {
         String path = addr.getString(2);
-        log.debug("connect path={}", path);
+        log.debug("connect path=" + path);
 
         return connect(path);
     }

@@ -5,8 +5,8 @@ import com.github.unidbg.signal.SigSet;
 import com.github.unidbg.signal.SignalOps;
 import com.github.unidbg.signal.SignalTask;
 import com.github.unidbg.signal.UnixSigSet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class UniThreadDispatcher implements ThreadDispatcher {
 
-    private static final Logger log = LoggerFactory.getLogger(UniThreadDispatcher.class);
+    private static final Log log = LogFactory.getLog(UniThreadDispatcher.class);
 
     private final List<Task> taskList = new ArrayList<>();
     private final AbstractEmulator<?> emulator;
@@ -92,13 +92,17 @@ public class UniThreadDispatcher implements ThreadDispatcher {
     public Number runMainForResult(MainTask main) {
         taskList.add(0, main);
 
-        log.debug("runMainForResult main={}", main);
+        if (log.isDebugEnabled()) {
+            log.debug("runMainForResult main=" + main);
+        }
 
         Number ret = run(0, null);
         for (Iterator<Task> iterator = taskList.iterator(); iterator.hasNext(); ) {
             Task task = iterator.next();
             if (task.isFinish()) {
-                log.debug("Finish task={}", task);
+                if (log.isDebugEnabled()) {
+                    log.debug("Finish task=" + task);
+                }
                 task.destroy(emulator);
                 iterator.remove();
                 for (SignalTask signalTask : task.getSignalTaskList()) {
@@ -131,19 +135,25 @@ public class UniThreadDispatcher implements ThreadDispatcher {
                         continue;
                     }
                     if (task.canDispatch()) {
-                        log.debug("Start dispatch task={}", task);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Start dispatch task=" + task);
+                        }
                         emulator.set(Task.TASK_KEY, task);
 
                         if(task.isContextSaved()) {
                             task.restoreContext(emulator);
                             for (SignalTask signalTask : task.getSignalTaskList()) {
                                 if (signalTask.canDispatch()) {
-                                    log.debug("Start run signalTask={}", signalTask);
+                                    if (log.isDebugEnabled()) {
+                                        log.debug("Start run signalTask=" + signalTask);
+                                    }
                                     SignalOps ops = task.isMainThread() ? this : task;
                                     try {
                                         this.runningTask = signalTask;
                                         Number ret = signalTask.callHandler(ops, emulator);
-                                        log.debug("End run signalTask={}, ret={}", signalTask, ret);
+                                        if (log.isDebugEnabled()) {
+                                            log.debug("End run signalTask=" + signalTask + ", ret=" + ret);
+                                        }
                                         if (ret != null) {
                                             signalTask.setResult(emulator, ret);
                                             signalTask.destroy(emulator);
@@ -154,8 +164,8 @@ public class UniThreadDispatcher implements ThreadDispatcher {
                                     } catch (PopContextException e) {
                                         this.runningTask.popContext(emulator);
                                     }
-                                } else {
-                                    log.debug("Skip call handler signalTask={}", signalTask);
+                                } else if (log.isDebugEnabled()) {
+                                    log.debug("Skip call handler signalTask=" + signalTask);
                                 }
                             }
                         }
@@ -163,7 +173,9 @@ public class UniThreadDispatcher implements ThreadDispatcher {
                         try {
                             this.runningTask = task;
                             Number ret = task.dispatch(emulator);
-                            log.debug("End dispatch task={}, ret={}", task, ret);
+                            if (log.isDebugEnabled()) {
+                                log.debug("End dispatch task=" + task + ", ret=" + ret);
+                            }
                             if (ret != null) {
                                 task.setResult(emulator, ret);
                                 task.destroy(emulator);
@@ -180,10 +192,10 @@ public class UniThreadDispatcher implements ThreadDispatcher {
                     } else {
                         if (log.isTraceEnabled() && task.isContextSaved()) {
                             task.restoreContext(emulator);
-                            log.trace("Skip dispatch task={}", task);
+                            log.trace("Skip dispatch task=" + task);
                             emulator.getUnwinder().unwind();
-                        } else {
-                            log.debug("Skip dispatch task={}", task);
+                        } else if (log.isDebugEnabled()) {
+                            log.debug("Skip dispatch task=" + task);
                         }
                     }
                 }

@@ -2,12 +2,14 @@ package com.github.unidbg.linux.android.dvm;
 
 import com.github.unidbg.pointer.UnidbgPointer;
 import com.sun.jna.Pointer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import java.util.Arrays;
 
 class JValueList extends VaList {
 
-    private static final Logger log = LoggerFactory.getLogger(JValueList.class);
+    private static final Log log = LogFactory.getLog(JValueList.class);
 
     JValueList(BaseVM vm, UnidbgPointer jvalue, DvmMethod method) {
         super(vm, method);
@@ -62,7 +64,7 @@ class JValueList extends VaList {
         }
 
         if (log.isDebugEnabled()) {
-            log.debug("JValueList args={}, shorty={}", method.args, shorties);
+            log.debug("JValueList args=" + method.args + ", shorty=" + Arrays.toString(shorties));
         }
     }
 

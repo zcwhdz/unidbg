@@ -10,8 +10,6 @@ static NSString *name = @"iPhone5S";
 static NSString *identifierForVendor = @"00000000-0000-0000-0000-000000000000";
 const NSOperatingSystemVersion g_systemVersion = { 7, 1, 2 };
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wobjc-protocol-method-implementation"
 @implementation NSProcessInfo (Foundation)
 - (NSOperatingSystemVersion) operatingSystemVersion {
   return g_systemVersion;
@@ -20,10 +18,6 @@ const NSOperatingSystemVersion g_systemVersion = { 7, 1, 2 };
   return NSProcessInfoThermalStateNominal;
 }
 - (BOOL) isLowPowerModeEnabled {
-  return YES;
-}
-- (BOOL) isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion) version {
-  NSLog(@"NSProcessInfo.isOperatingSystemAtLeastVersion: %ld.%ld.%ld", version.majorVersion, version.minorVersion, version.patchVersion);
   return YES;
 }
 @end
@@ -195,9 +189,6 @@ const CGRect g_frame = { 0, 0, 768, 1024 };
 @end
 
 @implementation UIView
-+ (NSTimeInterval)inheritedAnimationDuration {
-  return 1.0;
-}
 + (id)appearance {
   return nil;
 }
@@ -226,9 +217,6 @@ const CGRect g_frame = { 0, 0, 768, 1024 };
 }
 - (UIView *)snapshotViewAfterScreenUpdates:(BOOL)afterUpdates {
   return self;
-}
-- (NSArray *)gestureRecognizers {
-  return [NSArray array];
 }
 @end
 
@@ -367,15 +355,8 @@ static UIApplication *sharedApplication;
     return systemName;
 }
 - (NSUUID *)identifierForVendor {
-    uintptr_t lr = (uintptr_t) __builtin_return_address(0);
-    char buf[512];
-    print_lr(buf, lr);
     NSUUID *uuid = [NSUUID alloc];
     [uuid initWithUUIDString:identifierForVendor];
-    int debug = is_debug();
-    if(debug) {
-      NSLog(@"UIDevice.identifierForVendor uuid=%@, LR=%s", uuid, buf);
-    }
     return uuid;
 }
 - (NSString *)name {
@@ -384,10 +365,6 @@ static UIApplication *sharedApplication;
 
 - (UIDeviceBatteryState)batteryState {
     return UIDeviceBatteryStateUnplugged;
-}
-
-- (UIDeviceOrientation)orientation {
-    return UIDeviceOrientationPortrait;
 }
 
 @end
@@ -476,11 +453,6 @@ static UIApplication *sharedApplication;
 }
 @end
 
-@implementation NSOperation (Foundation)
-- (void) setQualityOfService: (NSQualityOfService) qualityOfService {
-}
-@end
-
 @implementation NSDateFormatter (Foundation)
 - (void)setLocalizedDateFormatFromTemplate:(NSString *)dateFormatTemplate {
 }
@@ -488,11 +460,6 @@ static UIApplication *sharedApplication;
 @implementation NSKeyedArchiver (Foundation)
 - (id)initRequiringSecureCoding:(BOOL)requiresSecureCoding {
     return nil;
-}
-@end
-@implementation NSDate (Foundation)
-+ (id)now {
-    return [NSDate date];
 }
 @end
 #pragma clang diagnostic pop
@@ -509,11 +476,6 @@ static UIApplication *sharedApplication;
     return self;
 }
 - (void)setExtendedLayoutIncludesOpaqueBars: (BOOL)flag {
-}
-- (UITraitCollection *)traitCollection {
-  return [UITraitCollection new];
-}
-- (void) viewWillAppear:(BOOL) animated {
 }
 @end
 
@@ -654,12 +616,6 @@ BOOL UIAccessibilityDarkerSystemColorsEnabled() {
 @end
 
 @implementation BRQuery
-@end
-
-@implementation NSConstantArray
-- (unsigned long)count {
-    return 0;
-}
 @end
 
 @implementation NSConstantIntegerNumber

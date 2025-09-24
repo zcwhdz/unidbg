@@ -7,9 +7,6 @@ NSNotificationName NSApplicationDidFinishLaunchingNotification = @"NSApplication
 NSNotificationName NSApplicationWillBecomeActiveNotification = @"NSApplicationWillBecomeActiveNotification";
 NSNotificationName NSApplicationDidBecomeActiveNotification = @"NSApplicationDidBecomeActiveNotification";
 NSNotificationName NSApplicationWillFinishLaunchingNotification = @"NSApplicationWillFinishLaunchingNotification";
-NSNotificationName NSApplicationDidResignActiveNotification = @"NSApplicationDidResignActiveNotification";
-NSNotificationName NSApplicationDidHideNotification = @"NSApplicationDidHideNotification";
-NSNotificationName NSApplicationDidUnhideNotification = @"NSApplicationDidUnhideNotification";
 
 @interface NSResponder : NSObject
 @end

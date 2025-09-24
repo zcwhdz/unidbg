@@ -13,8 +13,8 @@ import com.github.unidbg.ios.MachOLoader;
 import com.github.unidbg.ios.MachOModule;
 import com.github.unidbg.spi.SyscallHandler;
 import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
@@ -28,7 +28,7 @@ import java.util.UUID;
 
 public class BundleLoader extends BaseLoader {
 
-    private static final Logger log = LoggerFactory.getLogger(BundleLoader.class);
+    private static final Log log = LogFactory.getLog(BundleLoader.class);
 
     public static final String APP_NAME = "UniDbg";
 
@@ -89,7 +89,7 @@ public class BundleLoader extends BaseLoader {
             MachOLoader memory = (MachOLoader) emulator.getMemory();
             memory.setObjcRuntime(true);
             DarwinResolver resolver = createLibraryResolver();
-            if (isUseOverrideResolver()) {
+            if (overrideResolver) {
                 resolver.setOverride();
             }
             memory.setLibraryResolver(resolver);

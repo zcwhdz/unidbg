@@ -99,14 +99,13 @@ public class MachOTest extends TestCase {
                     System.out.println("version=" + versionMinCommand.version().major() + '.' + versionMinCommand.version().minor() + '.' + versionMinCommand.version().release());
                     System.out.println("sdk=" + versionMinCommand.sdk().major() + '.' + versionMinCommand.sdk().minor() + '.' + versionMinCommand.sdk().release());
                     break;
-                case CODE_SIGNATURE: {
+                case CODE_SIGNATURE:
                     MachO.CodeSignatureCommand codeSignatureCommand = (MachO.CodeSignatureCommand) command.body();
                     buffer.position((int) codeSignatureCommand.dataOff());
                     byte[] data = new byte[(int) codeSignatureCommand.dataSize()];
                     buffer.get(data);
                     Inspector.inspect(data, "codeSignature offset=" + codeSignatureCommand.dataOff() + ", size=" + codeSignatureCommand.dataSize());
                     break;
-                }
                 case LOAD_DYLIB:
                 case ID_DYLIB:
                 case REEXPORT_DYLIB:
@@ -118,7 +117,7 @@ public class MachOTest extends TestCase {
                 case DATA_IN_CODE:
                     MachO.LinkeditDataCommand linkEditDataCommand = (MachO.LinkeditDataCommand) command.body();
                     buffer.position((int) linkEditDataCommand.dataOff());
-                    byte[] data = new byte[(int) linkEditDataCommand.dataSize()];
+                    data = new byte[(int) linkEditDataCommand.dataSize()];
                     buffer.get(data);
                     Inspector.inspect(data, "linkEditDataCommand type=" + command.type());
                     break;

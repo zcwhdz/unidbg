@@ -80,6 +80,12 @@ public class CrackMe {
         });
         ixHook.refresh();
 
+//        emulator.traceCode(module.base, module.base + module.size);
+//        Debugger debugger = emulator.attach();
+//        debugger.addBreakPoint(module, 0x0246c);
+//        debugger.addBreakPoint(module, 0x0260c);
+//        emulator.traceWrite(0xbffff694L, 0xbffff694L + 4);
+
         while (!canStop) {
             long start = System.currentTimeMillis();
             String pwd = "password";

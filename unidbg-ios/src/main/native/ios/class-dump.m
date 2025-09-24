@@ -89,9 +89,6 @@ NSUInteger findClosedBracket(NSString *string) {
 }
 
 +(NSArray *) typeStringFromEncoding: (const char *) typeEncoding end: (NSUInteger *) end {
-	if(!typeEncoding) {
-		return @[@"unknown", @""];
-	}
 	if(typeEncoding[0] == '\0') {
 		return @[@"void", @""];
 	}
@@ -318,7 +315,7 @@ NSUInteger findClosedBracket(NSString *string) {
 				Ivar ivar = ivars[i];
 				const char *ivarName = ivar_getName(ivar);
 				const char *ivarTypeEncoding = ivar_getTypeEncoding(ivar);
-
+				
 				[result appendFormat:@"\t%@\n", [ClassDump variableDefinitionWithName: ivarTypeEncoding name: ivarName]];
 				
 			}
@@ -389,13 +386,10 @@ NSUInteger findClosedBracket(NSString *string) {
 						case 'P':
 							// Garbage collection
 							break;
-                        case '?':
-                            break;
 						case 't':
 							assert(0);
 							break;
 						default:
-						    NSLog(@"Unknown name: %s, propertyAttributeCount=%d, i=%d, attribute=%@, attributeValue=%s, typeEncoding=%s, propertyName=%s\n", propertyAttribute->name, propertyAttributeCount, i, attribute, attributeValue, typeEncoding, propertyName);
 							assert(0);
 							break;
 					}
@@ -427,11 +421,8 @@ NSUInteger findClosedBracket(NSString *string) {
 			assert(typeEncoding);
 			
 			NSString *propertyType = [ClassDump methodArgTypeString: typeEncoding];
-			if([propertyType hasSuffix: @"*"]) {
-			    [result appendFormat:@"@property %@%@%s;\n", attributesString, propertyType, propertyName];
-			} else {
-			    [result appendFormat:@"@property %@%@ %s;\n", attributesString, propertyType, propertyName];
-			}
+			
+			[result appendFormat:@"@property %@%@ %s;\n", attributesString, propertyType, propertyName];
 			
 			free(typeEncoding);
 		}

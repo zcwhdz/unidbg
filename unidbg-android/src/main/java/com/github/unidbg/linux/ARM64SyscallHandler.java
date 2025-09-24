@@ -41,6 +41,8 @@ import com.github.unidbg.unix.UnixEmulator;
 import com.github.unidbg.utils.Inspector;
 import com.sun.jna.Pointer;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import unicorn.Arm64Const;
@@ -549,7 +551,7 @@ public class ARM64SyscallHandler extends AndroidSyscallHandler {
         }
 
         log.info("pthread_clone child_stack={}, thread_id={}, fn={}, arg={}, flags={}", child_stack, threadId, fn, arg, list);
-        Logger log = LoggerFactory.getLogger(AbstractEmulator.class);
+        Log log = LogFactory.getLog(AbstractEmulator.class);
         if (log.isDebugEnabled()) {
             emulator.attach().debug();
         }
@@ -1118,7 +1120,7 @@ public class ARM64SyscallHandler extends AndroidSyscallHandler {
         } else {
             System.out.println("exit with code: " + status);
         }
-        if (LoggerFactory.getLogger(AbstractEmulator.class).isDebugEnabled()) {
+        if (LogFactory.getLog(AbstractEmulator.class).isDebugEnabled()) {
             createBreaker(emulator).debug();
         }
         emulator.getBackend().emu_stop();
@@ -1205,16 +1207,12 @@ public class ARM64SyscallHandler extends AndroidSyscallHandler {
             case PR_SET_NO_NEW_PRIVS:
             case PR_SET_THP_DISABLE:
                 return 0;
-            case 3:
-            case 39:
-                return 0;
         }
         throw new UnsupportedOperationException("option=" + option);
     }
 
     private static final int CLOCK_REALTIME = 0;
     private static final int CLOCK_MONOTONIC = 1;
-    private static final int CLOCK_THREAD_CPUTIME_ID = 3;
     private static final int CLOCK_MONOTONIC_RAW = 4;
     private static final int CLOCK_MONOTONIC_COARSE = 6;
     private static final int CLOCK_BOOTTIME = 7;
@@ -1234,7 +1232,6 @@ public class ARM64SyscallHandler extends AndroidSyscallHandler {
         switch (clk_id) {
             case CLOCK_REALTIME:
             case CLOCK_MONOTONIC:
-            case CLOCK_THREAD_CPUTIME_ID:
             case CLOCK_MONOTONIC_RAW:
             case CLOCK_MONOTONIC_COARSE:
             case CLOCK_BOOTTIME:

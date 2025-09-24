@@ -3,8 +3,8 @@ package com.github.unidbg.ios;
 import com.dd.plist.NSDictionary;
 import com.dd.plist.NSString;
 import com.github.unidbg.arm.backend.BackendFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -12,7 +12,7 @@ import java.util.List;
 
 public abstract class BaseLoader implements Loader {
 
-    private static final Logger log = LoggerFactory.getLogger(BaseLoader.class);
+    private static final Log log = LogFactory.getLog(BaseLoader.class);
 
     protected final List<BackendFactory> backendFactories = new ArrayList<>(5);
 
@@ -20,15 +20,10 @@ public abstract class BaseLoader implements Loader {
         this.backendFactories.add(backendFactory);
     }
 
-    private boolean overrideResolver;
+    protected boolean overrideResolver;
 
     public void useOverrideResolver() {
         this.overrideResolver = true;
-    }
-
-    @Override
-    public final boolean isUseOverrideResolver() {
-        return overrideResolver;
     }
 
     protected DarwinResolver createLibraryResolver() {

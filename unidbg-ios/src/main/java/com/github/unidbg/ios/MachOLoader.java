@@ -37,7 +37,6 @@ import com.github.unidbg.memory.MemoryMap;
 import com.github.unidbg.pointer.UnidbgPointer;
 import com.github.unidbg.pointer.UnidbgStructure;
 import com.github.unidbg.spi.AbstractLoader;
-import com.github.unidbg.spi.InitFunctionFilter;
 import com.github.unidbg.spi.LibraryFile;
 import com.github.unidbg.spi.Loader;
 import com.github.unidbg.thread.Task;
@@ -48,8 +47,8 @@ import com.sun.jna.Pointer;
 import io.kaitai.MachO;
 import io.kaitai.struct.ByteBufferKaitaiStream;
 import org.apache.commons.io.FilenameUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import unicorn.Arm64Const;
 import unicorn.ArmConst;
 import unicorn.Unicorn;
@@ -75,17 +74,23 @@ import java.util.Set;
 
 public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory, Loader, com.github.unidbg.ios.MachO {
 
-    private static final Logger log = LoggerFactory.getLogger(MachOLoader.class);
+    private static final Log log = LogFactory.getLog(MachOLoader.class);
 
     private boolean objcRuntime;
 
     MachOLoader(Emulator<DarwinFileIO> emulator, UnixSyscallHandler<DarwinFileIO> syscallHandler, String[] envs) {
         super(emulator, syscallHandler);
 
-        stackSize = STACK_SIZE_OF_PAGE * emulator.getPageAlign();
-        backend.mem_map(STACK_BASE - stackSize, stackSize, UnicornConst.UC_PROT_READ | UnicornConst.UC_PROT_WRITE);
+        // init stack
+        long stackBase = STACK_BASE;
+        if (emulator.is64Bit()) {
+            stackBase += 0xf00000000L;
+        }
 
-        setStackPoint(STACK_BASE);
+        stackSize = STACK_SIZE_OF_PAGE * emulator.getPageAlign();
+        backend.mem_map(stackBase - stackSize, stackSize, UnicornConst.UC_PROT_READ | UnicornConst.UC_PROT_WRITE);
+
+        setStackPoint(stackBase);
         initializeTSD(envs);
     }
 
@@ -189,7 +194,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         setStackPoint(sp);
 
         if (log.isDebugEnabled()) {
-            log.debug("initializeTSD tsd={}, thread={}, environ={}, vars={}, sp=0x{}, errno={}", tsd, thread, environ, vars, Long.toHexString(getStackPoint()), errno);
+            log.debug("initializeTSD tsd=" + tsd + ", thread=" + thread + ", environ=" + environ + ", vars=" + vars + ", sp=0x" + Long.toHexString(getStackPoint()) + ", errno=" + errno);
         }
 
         addModuleListener(new LibDyldPatcher(_NSGetArgc, _NSGetArgv, _NSGetEnviron, _NSGetProgname));
@@ -198,7 +203,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
     public final void onExecutableLoaded(String executable) {
         if (callInitFunction) {
             for (MachOModule m : modules.values().toArray(new MachOModule[0])) {
-                boolean needCallInit = m.symbolNotBound.isEmpty() || isPayloadModule(m) || m.getPath().equals(executable);
+                boolean needCallInit = m.allSymbolBound || isPayloadModule(m) || m.getPath().equals(executable);
                 if (needCallInit) {
                     m.doInitialization(emulator);
                 }
@@ -222,7 +227,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             for (NeedLibrary library : export.lazyLoadNeededList.toArray(new NeedLibrary[0])) {
                 String neededLibrary = library.path;
                 if (log.isDebugEnabled()) {
-                    log.debug("{} need dependency {}", export.getPath(), neededLibrary);
+                    log.debug(export.getPath() + " need dependency " + neededLibrary);
                 }
 
                 MachOModule loaded = modules.get(FilenameUtils.getName(neededLibrary));
@@ -241,7 +246,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                         export.upwardLibraries.put(FilenameUtils.getBaseName(needed.name), needed);
                     }
                 } else if (!library.weak) {
-                    log.info("{} load NOT weak dependency {} failed", export.getPath(), neededLibrary);
+                    log.info(export.getPath() + " load dependency " + neededLibrary + " failed");
                 }
             }
             export.lazyLoadNeededList.clear();
@@ -262,7 +267,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 if (isPayloadModule(m)) {
                     continue;
                 }
-                if (m.symbolNotBound.isEmpty() || forceCallInit) {
+                if (m.allSymbolBound || forceCallInit) {
                     m.callObjcNotifyInit(_objcNotifyInit);
                     m.doInitialization(emulator);
                 }
@@ -277,10 +282,6 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
     }
 
     private com.github.unidbg.ios.Loader loader;
-
-    public boolean isUseOverrideResolver() {
-        return loader != null && loader.isUseOverrideResolver();
-    }
 
     public void setLoader(com.github.unidbg.ios.Loader loader) {
         this.loader = loader;
@@ -322,7 +323,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     buffer.limit((int) (arch.offset() + arch.size()));
                     buffer.position((int) arch.offset());
                     if (log.isDebugEnabled()) {
-                        log.debug("loadFatArch={}, cpuSubType={}", arch.cputype(), arch.cpusubtype());
+                        log.debug("loadFatArch=" + arch.cputype() + ", cpuSubType=" + arch.cpusubtype());
                     }
                     return loadInternalPhase(libraryFile, buffer.slice(), loadNeeded, checkBootstrap, parentRpath);
                 }
@@ -516,7 +517,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     String name = subCommand.name().value();
                     MachOModule module = (MachOModule) findModule(name);
                     if (module == null) {
-                        log.debug("Find sub client failed: {}", name);
+                        log.debug("Find sub client failed: " + name);
                     } else {
                         subModule = module;
                     }
@@ -529,7 +530,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     }
                     break;
                 default:
-                    log.info("Not handle loadCommand={}, dylibPath={}", command.type(), dylibPath);
+                    log.info("Not handle loadCommand=" + command.type() + ", dylibPath=" + dylibPath);
                     break;
             }
         }
@@ -551,9 +552,6 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
 
         final List<NeedLibrary> neededList = new ArrayList<>();
-        if (checkBootstrap && isExecutable) {
-            neededList.add(new NeedLibrary("/System/Library/Frameworks/UIKit.framework/UIKit", false, false));
-        }
         final List<MemRegion> regions = new ArrayList<>(5);
         final List<MachO.DylibCommand> exportDylibs = new ArrayList<>();
         MachO.SymtabCommand symtabCommand = null;
@@ -643,7 +641,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     }
                     Alignment alignment = this.mem_map(begin, segmentCommand64.vmsize(), prot, dyId, emulator.getPageAlign());
                     if (log.isDebugEnabled()) {
-                        log.debug("mem_map address=0x{}, size=0x{}", Long.toHexString(alignment.address), Long.toHexString(alignment.size));
+                        log.debug("mem_map address=0x" + Long.toHexString(alignment.address) + ", size=0x" + Long.toHexString(alignment.size));
                     }
                     write_mem((int) segmentCommand64.fileoff(), (int) segmentCommand64.filesize(), begin, buffer);
 
@@ -689,12 +687,12 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     break;
             }
         }
-        Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + dyId);
+        Log log = LogFactory.getLog("com.github.unidbg.ios." + dyId);
         if (!log.isDebugEnabled()) {
             log = MachOLoader.log;
         }
         if (log.isDebugEnabled()) {
-            log.debug("load dyId={}, base=0x{}, dyldInfoCommand={}, loadNeeded={}, regions={}, isPositionIndependent={}", dyId, Long.toHexString(loadBase), dyldInfoCommand, loadNeeded, regions, isPositionIndependent);
+            log.debug("load dyId=" + dyId + ", base=0x" + Long.toHexString(loadBase) + ", dyldInfoCommand=" + dyldInfoCommand + ", loadNeeded=" + loadNeeded + ", regions=" + regions + ", isPositionIndependent=" + isPositionIndependent);
         }
 
         Map<String, Module> exportModules = new LinkedHashMap<>();
@@ -705,7 +703,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         for (MachO.DylibCommand dylibCommand : exportDylibs) {
             String neededLibrary = dylibCommand.name();
             if (log.isDebugEnabled()) {
-                log.debug("{} need export dependency {}", dyId, neededLibrary);
+                log.debug(dyId + " need export dependency " + neededLibrary);
             }
 
             MachOModule loaded = modules.get(FilenameUtils.getName(neededLibrary));
@@ -720,7 +718,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 needed.addReferenceCount();
                 exportModules.put(FilenameUtils.getBaseName(needed.name), needed);
             } else if(log.isDebugEnabled()) {
-                log.debug("{} load export dependency {} failed", dyId, neededLibrary);
+                log.debug(dyId + " load export dependency " + neededLibrary + " failed");
             }
         }
 
@@ -732,7 +730,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             for (NeedLibrary library : neededList) {
                 String neededLibrary = library.path;
                 if (log.isDebugEnabled()) {
-                    log.debug("{} need dependency {}", dyId, neededLibrary);
+                    log.debug(dyId + " need dependency " + neededLibrary);
                 }
 
                 MachOModule loaded = modules.get(FilenameUtils.getName(neededLibrary));
@@ -754,7 +752,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     if ("/usr/lib/libnetwork.dylib".equals(neededLibrary)) {
                         continue;
                     }
-                    log.info("Module \"{}\" load dependency \"{}\" failed: rpath={}", dyId, neededLibrary, rpathSet);
+                    log.info("Module \"" + dyId + "\" load dependency " + neededLibrary + " failed: rpath=" + rpathSet);
                 }
             }
         } else {
@@ -762,26 +760,18 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
 
         if (log.isDebugEnabled()) {
-            log.debug("load dyId={}, base=0x{}, neededLibraries={}, upwardLibraries={}", dyId, Long.toHexString(loadBase), neededLibraries, upwardLibraries);
+            log.debug("load dyId=" + dyId + ", base=0x" + Long.toHexString(loadBase) + ", neededLibraries=" + neededLibraries + ", upwardLibraries=" + upwardLibraries);
         }
 
         final long loadSize = size;
-        InitFunctionFilter initFunctionFilter = null;
-        if (libraryResolver instanceof InitFunctionFilter) {
-            initFunctionFilter = (InitFunctionFilter) libraryResolver;
-        }
         MachOModule module = new MachOModule(machO, dyId, loadBase, loadSize, new HashMap<>(neededLibraries), regions,
                 symtabCommand, dysymtabCommand, buffer, lazyLoadNeededList, upwardLibraries, exportModules, dylibPath, emulator,
                 dyldInfoCommand, chainedFixups, null, null, vars, machHeader, isExecutable, this, hookListeners, ordinalList,
-                fEHFrameSection, fUnwindInfoSection, objcSections, segments.toArray(new Segment[0]), libraryFile, initFunctionFilter);
+                fEHFrameSection, fUnwindInfoSection, objcSections, segments.toArray(new Segment[0]), libraryFile);
         if (isExecutable) {
             setExecuteModule(module);
         }
-        for(MachOModule mm : modules.values()) {
-            mm.onLoadNewModule(module);
-        }
         modules.put(dyId, module);
-        path_modules.put(dylibPath, module);
         if (subModule != null) {
             subModule.exportModules.put(FilenameUtils.getBaseName(module.name), module);
         }
@@ -850,7 +840,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
 
         if (log.isDebugEnabled()) {
-            log.debug("Load library {} offset={}ms", dyId, System.currentTimeMillis() - start);
+            log.debug("Load library " + dyId + " offset=" + (System.currentTimeMillis() - start) + "ms");
         }
         notifyModuleLoaded(module);
         return module;
@@ -859,8 +849,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
     private static final String RPATH = "@rpath";
 
     private LibraryFile resolveLibrary(LibraryFile libraryFile, String neededLibrary, Collection<String> rpathSet) throws IOException {
-        boolean isRPath = neededLibrary.contains(RPATH);
-        if (rpathSet.isEmpty() || !isRPath) {
+        if (rpathSet.isEmpty() || !neededLibrary.contains(RPATH)) {
             LibraryFile neededLibraryFile = libraryFile.resolveLibrary(emulator, neededLibrary);
             if (libraryResolver != null && neededLibraryFile == null) {
                 neededLibraryFile = libraryResolver.resolveLibrary(emulator, neededLibrary);
@@ -879,46 +868,39 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     return neededLibraryFile;
                 }
             }
-            return libraryFile.resolveLibrary(emulator, neededLibrary.replace(RPATH, FilenameUtils.getFullPathNoEndSeparator(libraryFile.getPath())));
+            return null;
         }
     }
 
     private void __NSSetLogCStringFunction(Pointer message, int length, boolean withSysLogBanner) {
         byte[] data = message.getByteArray(0, length);
         String str = new String(data, StandardCharsets.UTF_8);
-        boolean print = true;
-        if (libraryResolver instanceof NSLogListener) {
-            NSLogListener listener = (NSLogListener) libraryResolver;
-            print = listener.onLog(str);
-        }
-        if (print) {
-            if (withSysLogBanner) {
-                System.err.println("NSLog: " + str);
-            } else {
-                System.out.println("NSLog: " + str);
-            }
+        if (withSysLogBanner) {
+            System.err.println("NSLog: " + str);
+        } else {
+            System.out.println("NSLog: " + str);
         }
     }
 
     private void checkSection(String dyId, String segName, String sectName) {
         // __OBJC need fNotifyObjC = true
         if (log.isDebugEnabled()) {
-            log.debug("checkSection name={}, dyId={}, segName={}", sectName, dyId, segName);
+            log.debug("checkSection name=" + sectName + ", dyId=" + dyId + ", segName=" + segName);
         }
     }
 
-    private void processRebase(Logger log, MachOModule module) {
-        MachO.DyldInfoCommand dyldInfoCommand = module.dyldInfoCommand;
+    private void processRebase(Log log, MachOModule mm) {
+        MachO.DyldInfoCommand dyldInfoCommand = mm.dyldInfoCommand;
         if (dyldInfoCommand == null) {
-            MachO.LinkeditDataCommand chainedFixups = module.chainedFixups;
+            MachO.LinkeditDataCommand chainedFixups = mm.chainedFixups;
             if (chainedFixups == null) {
                 return;
             }
-            ByteBuffer buffer = module.buffer.duplicate();
+            ByteBuffer buffer = mm.buffer.duplicate();
             buffer.limit((int) (chainedFixups.dataOff() + chainedFixups.dataSize()));
             buffer.position((int) chainedFixups.dataOff()); // dyld_chained_fixups_header
             try (ByteBufferKaitaiStream io = new ByteBufferKaitaiStream(buffer.slice())) {
-                fixupAllChainedFixups(io, module, chainedFixups);
+                fixupAllChainedFixups(io, mm, chainedFixups);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -926,10 +908,10 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
 
         if (dyldInfoCommand.rebaseSize() > 0) {
-            ByteBuffer buffer = module.buffer.duplicate();
+            ByteBuffer buffer = mm.buffer.duplicate();
             buffer.limit((int) (dyldInfoCommand.rebaseOff() + dyldInfoCommand.rebaseSize()));
             buffer.position((int) dyldInfoCommand.rebaseOff());
-            rebase(log, buffer.slice(), module);
+            rebase(log, buffer.slice(), mm);
         }
     }
 
@@ -1165,12 +1147,10 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
     /**
      * <a href="http://localhost:8080/source/xref/dyld/common/MachOLoaded.cpp#1308">参考实现</a>
      */
-    private void walkChain(MachOModule mm, Pointer chain, final int pointer_format, List<FixupChains.BindTarget> bindTargets, ByteBufferKaitaiStream symbolsPool) {
-        Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + mm.name);
+    private void walkChain(MachOModule mm, Pointer chain, int pointer_format, List<FixupChains.BindTarget> bindTargets, ByteBufferKaitaiStream symbolsPool) {
         boolean chainEnd = false;
         while (!chainEnd) {
             long raw64 = chain.getLong(0);
-            log.trace("handleChain: {}, pointer_format={}, raw64=0x{}", chain, pointer_format, Long.toHexString(raw64));
             FixupChains.handleChain(emulator, mm, hookListeners, pointer_format, chain, raw64, bindTargets, symbolsPool);
             switch (pointer_format) {
                 case FixupChains.DYLD_CHAINED_PTR_ARM64E: {
@@ -1198,7 +1178,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
     }
 
-    private void rebase(Logger log, ByteBuffer buffer, MachOModule module) {
+    private void rebase(Log log, ByteBuffer buffer, MachOModule module) {
         final List<MemRegion> regions = module.getRegions();
         int type = 0;
         int segmentIndex;
@@ -1276,7 +1256,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
     }
 
-    private void rebaseAt(Logger log, int type, long address, Module module) {
+    private void rebaseAt(Log log, int type, long address, Module module) {
         Pointer pointer = UnidbgPointer.pointer(emulator, address);
         if (pointer == null) {
             throw new IllegalStateException();
@@ -1289,7 +1269,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             newPointer = newPointer.share(module.base);
         }
         if (log.isTraceEnabled()) {
-            log.trace("rebaseAt type={}, address=0x{}, module={}, old={}, new={}", type, Long.toHexString(address - module.base), module.name, old, newPointer);
+            log.trace("rebaseAt type=" + type + ", address=0x" + Long.toHexString(address - module.base) + ", module=" + module.name + ", old=" + old + ", new=" + newPointer);
         }
         switch (type) {
             case REBASE_TYPE_POINTER:
@@ -1313,7 +1293,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         ByteBuffer slice = buffer.slice();
         slice.order(ByteOrder.LITTLE_ENDIAN);
 
-        Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + module.name);
+        Log log = LogFactory.getLog("com.github.unidbg.ios." + module.name);
 
         for (int i = 0; i < dysymtabCommand.nLocRel(); i++) {
             Relocation relocation = Relocation.create(slice);
@@ -1332,15 +1312,15 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             }
             pointer.setPointer(0, UnidbgPointer.pointer(emulator, module.base + target));
             if (log.isDebugEnabled()) {
-                log.debug("bindLocalRelocations address=0x{}, symbolNum=0x{}, target=0x{}", Integer.toHexString(relocation.address), Integer.toHexString(relocation.symbolNum), Long.toHexString(target));
+                log.debug("bindLocalRelocations address=0x" + Integer.toHexString(relocation.address) + ", symbolNum=0x" + Integer.toHexString(relocation.symbolNum) + ", target=0x" + Long.toHexString(target));
             }
         }
     }
 
-    private void bindExternalRelocations(MachOModule module) {
+    private boolean bindExternalRelocations(MachOModule module) {
         MachO.DysymtabCommand dysymtabCommand = module.dysymtabCommand;
         if (dysymtabCommand.nExtRel() <= 0) {
-            return;
+            return true;
         }
 
         ByteBuffer buffer = module.buffer;
@@ -1349,8 +1329,9 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         ByteBuffer slice = buffer.slice();
         slice.order(ByteOrder.LITTLE_ENDIAN);
 
-        Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + module.name);
+        Log log = LogFactory.getLog("com.github.unidbg.ios." + module.name);
 
+        boolean ret = true;
         for (int i = 0; i < dysymtabCommand.nExtRel(); i++) {
             Relocation relocation = Relocation.create(slice);
             if (relocation.pcRel || !relocation.extern || relocation.scattered ||
@@ -1370,19 +1351,22 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
 
             if (address == 0L) {
                 if (isWeakRef) {
-                    log.debug("bindExternalRelocations failed symbol={}, isWeakRef=true", symbol);
+                    if (log.isDebugEnabled()) {
+                        log.debug("bindExternalRelocations failed symbol=" + symbol + ", isWeakRef=true");
+                    }
                     pointer.setPointer(0, null);
                 } else {
-                    log.warn("bindExternalRelocations failed symbol={}, isWeakRef=false", symbol);
+                    log.warn("bindExternalRelocations failed symbol=" + symbol + ", isWeakRef=false");
                 }
-                module.addNotBoundSymbol(symbol.getName());
+                ret = false;
             } else {
                 pointer.setPointer(0, UnidbgPointer.pointer(emulator, address));
                 if (log.isDebugEnabled()) {
-                    log.debug("bindExternalRelocations address=0x{}, symbolNum=0x{}, symbolName={}", Long.toHexString(relocation.address), Integer.toHexString(relocation.symbolNum), symbol.getName());
+                    log.debug("bindExternalRelocations address=0x" + Long.toHexString(relocation.address) + ", symbolNum=0x" + Integer.toHexString(relocation.symbolNum) + ", symbolName=" + symbol.getName());
                 }
             }
         }
+        return ret;
     }
 
     private long resolveSymbol(MachOModule module, MachOSymbol symbol) {
@@ -1397,7 +1381,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 replace = findSymbolInternal(targetImage, symbol.getName());
             } else {
                 if (log.isDebugEnabled()) {
-                    log.debug("resolveSymbol libraryOrdinal={}, path={}", libraryOrdinal, path);
+                    log.debug("resolveSymbol libraryOrdinal=" + libraryOrdinal + ", path=" + path);
                 }
             }
         } else {
@@ -1518,44 +1502,45 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         if (dyldInfoCommand == null) {
             bindLocalRelocations(module);
 
-            boolean allSymbolBound = true;
+            boolean ret = true;
             for (MachO.LoadCommand command : module.machO.loadCommands()) {
                 switch (command.type()) {
                     case SEGMENT: {
                         MachO.SegmentCommand segmentCommand = (MachO.SegmentCommand) command.body();
                         for (MachO.SegmentCommand.Section section : segmentCommand.sections()) {
-                            allSymbolBound = processSection(module, indirectTable, allSymbolBound, section.flags(), section.size(), section.addr(), section.reserved1());
+                            ret = processSection(module, indirectTable, ret, section.flags(), section.size(), section.addr(), section.reserved1());
                         }
                         break;
                     }
                     case SEGMENT_64: {
                         MachO.SegmentCommand64 segmentCommand = (MachO.SegmentCommand64) command.body();
                         for (MachO.SegmentCommand64.Section64 section : segmentCommand.sections()) {
-                            allSymbolBound = processSection(module, indirectTable, allSymbolBound, section.flags(), section.size(), section.addr(), section.reserved1());
+                            ret = processSection(module, indirectTable, ret, section.flags(), section.size(), section.addr(), section.reserved1());
                         }
                         break;
                     }
                 }
             }
 
-            bindExternalRelocations(module);
+            ret &= bindExternalRelocations(module);
+            module.allSymbolBound = ret;
         } else {
             if (dyldInfoCommand.bindSize() > 0) {
                 ByteBuffer buffer = module.buffer.duplicate();
                 buffer.limit((int) (dyldInfoCommand.bindOff() + dyldInfoCommand.bindSize()));
                 buffer.position((int) dyldInfoCommand.bindOff());
 
-                Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + module.name);
+                Log log = LogFactory.getLog("com.github.unidbg.ios." + module.name);
                 if (!log.isDebugEnabled()) {
                     log = MachOLoader.log;
                 }
-                eachBind(log, buffer.slice(), module);
+                module.allSymbolBound = eachBind(log, buffer.slice(), module);
             }
         }
     }
 
     private boolean processSection(MachOModule module, List<Long> indirectTable, boolean allSymbolBound, long flags, long size, long addr, long reserved1) {
-        Logger log = LoggerFactory.getLogger("com.github.unidbg.ios." + module.name);
+        Log log = LogFactory.getLog("com.github.unidbg.ios." + module.name);
         if (!log.isDebugEnabled()) {
             log = MachOLoader.log;
         }
@@ -1586,7 +1571,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     newPointer = newPointer.share(module.base);
                 }
                 if (log.isDebugEnabled()) {
-                    log.debug("bindIndirectSymbolPointers pointer={}, newPointer={}", pointer, newPointer);
+                    log.debug("bindIndirectSymbolPointers pointer=" + pointer + ", newPointer=" + newPointer);
                 }
                 pointer.setPointer(0, newPointer);
                 continue;
@@ -1608,20 +1593,20 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             }
             if (address == 0L) {
                 if (log.isDebugEnabled()) {
-                    log.debug("bindIndirectSymbolPointers symbol={}, isWeakRef={}", symbol, isWeakRef);
+                    log.debug("bindIndirectSymbolPointers symbol=" + symbol + ", isWeakRef=" + isWeakRef);
                 }
                 pointer.setPointer(0, null);
             } else {
                 pointer.setPointer(0, UnidbgPointer.pointer(emulator, address));
                 if (log.isDebugEnabled()) {
-                    log.debug("bindIndirectSymbolPointers symbolIndex=0x{}, symbol={}, ptrToBind=0x{}", Long.toHexString(symbolIndex), symbol, Long.toHexString(ptrToBind));
+                    log.debug("bindIndirectSymbolPointers symbolIndex=0x" + Long.toHexString(symbolIndex) + ", symbol=" + symbol + ", ptrToBind=0x" + Long.toHexString(ptrToBind));
                 }
             }
         }
         return allSymbolBound;
     }
 
-    private void eachBind(Logger log, ByteBuffer buffer, MachOModule module) {
+    private boolean eachBind(Log log, ByteBuffer buffer, MachOModule module) {
         final List<MemRegion> regions = module.getRegions();
         int type = 0;
         int segmentIndex;
@@ -1634,6 +1619,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         int count;
         int skip;
         boolean done = false;
+        boolean ret = true;
         while (!done && buffer.hasRemaining()) {
             int b = buffer.get() & 0xff;
             int immediate = b & BIND_IMMEDIATE_MASK;
@@ -1686,21 +1672,21 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     if (address >= segmentEndAddress) {
                         throw new IllegalStateException();
                     }
-                    doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
+                    ret &= doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
                     address += emulator.getPointerSize();
                     break;
                 case BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB:
                     if (address >= segmentEndAddress) {
                         throw new IllegalStateException();
                     }
-                    doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
+                    ret &= doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
                     address += (Utils.readULEB128(buffer).longValue() + emulator.getPointerSize());
                     break;
                 case BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED:
                     if (address >= segmentEndAddress) {
                         throw new IllegalStateException();
                     }
-                    doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
+                    ret &= doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
                     address += ((long) immediate *emulator.getPointerSize() + emulator.getPointerSize());
                     break;
                 case BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB:
@@ -1710,7 +1696,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                         if (address >= segmentEndAddress) {
                             throw new IllegalStateException();
                         }
-                        doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
+                        ret &= doBindAt(log, libraryOrdinal, type, address, symbolName, symbolFlags, addend, module);
                         address += (skip + emulator.getPointerSize());
                     }
                     break;
@@ -1718,9 +1704,10 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     throw new IllegalStateException(String.format("bad bind opcode 0x%s in bind info", Integer.toHexString(opcode)));
             }
         }
+        return ret;
     }
 
-    private void doBindAt(Logger log, int libraryOrdinal, int type, long address, String symbolName, int symbolFlags, long addend, MachOModule module) {
+    private boolean doBindAt(Log log, int libraryOrdinal, int type, long address, String symbolName, int symbolFlags, long addend, MachOModule module) {
         Pointer pointer = UnidbgPointer.pointer(emulator, address);
         if (pointer == null) {
             throw new IllegalStateException();
@@ -1734,12 +1721,11 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             targetImage = module;
         } else if (libraryOrdinal == BIND_SPECIAL_DYLIB_FLAT_LOOKUP) {
             for(MachOModule mm : modules.values().toArray(new MachOModule[0])) {
-                if (doBindAt(type, pointer, addend, module, mm, symbolName, false)) {
-                    return;
+                if (doBindAt(type, pointer, addend, module, mm, symbolName)) {
+                    return true;
                 }
             }
-            module.addNotBoundSymbol(symbolName);
-            return;
+            return false;
         } else if (libraryOrdinal <= 0) {
             throw new IllegalStateException(String.format("bad mach-o binary, unknown special library ordinal (%d) too big for symbol %s in %s: symbolFlags=0x%x", libraryOrdinal, symbolName, module.getPath(), symbolFlags));
         } else if (libraryOrdinal <= module.ordinalList.size()) {
@@ -1747,70 +1733,31 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             targetImage = this.modules.get(FilenameUtils.getName(path));
             if (targetImage == null) { // LOAD_WEAK_DYLIB
                 if (log.isDebugEnabled()) {
-                    log.debug("doBindAt LOAD_WEAK_DYLIB: {}", path);
+                    log.debug("doBindAt LOAD_WEAK_DYLIB: " + path);
                 }
-                module.addNotBoundSymbol(symbolName);
-                return;
+                return false;
             }
         } else {
             throw new IllegalStateException(String.format("bad mach-o binary, library ordinal (%d) too big (max %d) for symbol %s in %s", libraryOrdinal, module.ordinalList.size(), symbolName, module.getPath()));
         }
 
         targetImage = fakeTargetImage(targetImage, symbolName);
-        doBindAt(type, pointer, addend, module, targetImage, symbolName, true);
+        return doBindAt(type, pointer, addend, module, targetImage, symbolName);
     }
 
     final MachOModule fakeTargetImage(MachOModule targetImage, String symbolName) {
         if ("___NSArray0__".equals(symbolName) ||
                 "___NSDictionary0__".equals(symbolName) ||
                 "_OBJC_CLASS_$_NSConstantIntegerNumber".equals(symbolName) ||
-                "_OBJC_CLASS_$_NSConstantArray".equals(symbolName) ||
                 "_NSProcessInfoPowerStateDidChangeNotification".equals(symbolName) ||
                 "_NSExtensionHostDidEnterBackgroundNotification".equals(symbolName) ||
-                "_NSExtensionHostDidBecomeActiveNotification".equals(symbolName) ||
-                "_objc_claimAutoreleasedReturnValue".equals(symbolName) ||
-                "_objc_retain_x1".equals(symbolName) ||
-                "_objc_release_x1".equals(symbolName) ||
-                "_objc_retain_x2".equals(symbolName) ||
-                "_objc_retain_x3".equals(symbolName) ||
-                "_objc_retain_x4".equals(symbolName) ||
-                "_objc_retain_x5".equals(symbolName) ||
-                "_objc_retain_x7".equals(symbolName) ||
-                "_objc_retain_x8".equals(symbolName) ||
-                "_objc_release_x8".equals(symbolName) ||
-                "_objc_release_x9".equals(symbolName) ||
-                "_objc_retain_x19".equals(symbolName) ||
-                "_objc_release_x19".equals(symbolName) ||
-                "_objc_retain_x20".equals(symbolName) ||
-                "_objc_release_x20".equals(symbolName) ||
-                "_objc_retain_x21".equals(symbolName) ||
-                "_objc_release_x21".equals(symbolName) ||
-                "_objc_retain_x22".equals(symbolName) ||
-                "_objc_release_x22".equals(symbolName) ||
-                "_objc_retain_x23".equals(symbolName) ||
-                "_objc_release_x23".equals(symbolName) ||
-                "_objc_retain_x24".equals(symbolName) ||
-                "_objc_release_x24".equals(symbolName) ||
-                "_objc_retain_x25".equals(symbolName) ||
-                "_objc_release_x25".equals(symbolName) ||
-                "_objc_retain_x26".equals(symbolName) ||
-                "_objc_release_x26".equals(symbolName) ||
-                "_objc_retain_x27".equals(symbolName) ||
-                "_objc_release_x27".equals(symbolName) ||
-                "_objc_retain_x28".equals(symbolName) ||
-                "_objc_release_x28".equals(symbolName)) {
-            MachOModule fakeImage = this.modules.get("UIKit");
-            if (fakeImage == null) {
-                fakeImage = this.modules.get("AppKit");
+                "_NSExtensionHostDidBecomeActiveNotification".equals(symbolName)) {
+            targetImage = this.modules.get("UIKit");
+            if (targetImage == null) {
+                targetImage = this.modules.get("AppKit");
             }
-            if (fakeImage == null) {
-                fakeImage = this.modules.get("IOKit");
-            }
-            if (fakeImage == null) {
-                emulator.attach().debug();
-                throw new IllegalStateException(String.format("targetImage=%s, symbolName=%s", targetImage, symbolName));
-            } else {
-                targetImage = fakeImage;
+            if (targetImage == null) {
+                throw new IllegalStateException();
             }
         }
         return targetImage;
@@ -1841,7 +1788,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 symbol = findSymbolInternal(foundation, symbolName);
                 if (symbol != null) {
                     if (log.isDebugEnabled()) {
-                        log.debug("Redirect symbol={}", symbol);
+                        log.debug("Redirect symbol=" + symbol);
                     }
                 }
             }
@@ -1849,11 +1796,11 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         return symbol;
     }
 
-    private boolean doBindAt(int type, Pointer pointer, long addend, MachOModule module, MachOModule targetImage, String symbolName, boolean updateNotBoundSymbol) {
+    private boolean doBindAt(int type, Pointer pointer, long addend, Module module, MachOModule targetImage, String symbolName) {
         Symbol symbol = this.findSymbolInternal(targetImage, symbolName);
         if (symbol == null) {
             if (log.isDebugEnabled()) {
-                log.info("doBindAt type={}, symbolName={}, targetImage={}", type, symbolName, targetImage);
+                log.info("doBindAt type=" + type + ", symbolName=" + symbolName + ", targetImage=" + targetImage);
             }
             long bindAt = 0;
             for (HookListener listener : hookListeners) {
@@ -1876,9 +1823,6 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 }
                 return true;
             }
-            if (updateNotBoundSymbol) {
-                module.addNotBoundSymbol(symbolName);
-            }
             return false;
         }
 
@@ -1892,7 +1836,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         }
 
         if (log.isTraceEnabled()) {
-            log.trace("doBindAt 0x={}, type={}, symbolName={}, addend={}, lazy=" + false + ", symbol={}, pointer={}, bindAt=0x{}", Long.toHexString(symbol.getValue()), type, symbol.getModuleName(), addend, symbol, pointer, Long.toHexString(bindAt));
+            log.trace("doBindAt 0x=" + Long.toHexString(symbol.getValue()) + ", type=" + type + ", symbolName=" + symbol.getModuleName() + ", addend=" + addend + ", lazy=" + false + ", symbol=" + symbol + ", pointer=" + pointer + ", bindAt=0x" + Long.toHexString(bindAt));
         }
 
         Pointer newPointer = UnidbgPointer.pointer(emulator, bindAt);
@@ -1921,12 +1865,11 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             buffer.get(data);
             pointer(begin).write(data);
         } else if(size < 0) {
-            log.warn("write_mem offset={}, size={}, begin=0x{}", offset, offset, Long.toHexString(begin));
+            log.warn("write_mem offset=" + offset + ", size=" + offset + ", begin=0x" + Long.toHexString(begin));
         }
     }
 
     final Map<String, MachOModule> modules = new LinkedHashMap<>();
-    final Map<String, MachOModule> path_modules = new HashMap<>();
 
     private int get_segment_protection(MachO.VmProt vmProt) {
         int prot = Unicorn.UC_PROT_NONE;
@@ -2021,7 +1964,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             for (NeedLibrary library : export.lazyLoadNeededList.toArray(new NeedLibrary[0])) {
                 String neededLibrary = library.path;
                 if (log.isDebugEnabled()) {
-                    log.debug("dlopen {} need dependency {}", export.getPath(), neededLibrary);
+                    log.debug(export.getPath() + " need dependency " + neededLibrary);
                 }
 
                 MachOModule loaded = modules.get(FilenameUtils.getName(neededLibrary));
@@ -2041,7 +1984,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                             export.upwardLibraries.put(FilenameUtils.getBaseName(needed.name), needed);
                         }
                     } else if (!library.weak) {
-                        log.info("{} load dependency {} failed", export.getPath(), neededLibrary);
+                        log.info(export.getPath() + " load dependency " + neededLibrary + " failed");
                     }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -2052,7 +1995,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
 
         for (MachOModule export : modules.values()) {
             if (!export.lazyLoadNeededList.isEmpty()) {
-                log.info("dlopen {} resolve needed library failed: {}, neededList={}", path, export.name, export.lazyLoadNeededList);
+                log.info("dlopen " + path + " resolve needed library failed: " + export.name + ", neededList=" + export.lazyLoadNeededList);
             }
         }
         for (MachOModule m : modules.values()) {
@@ -2067,7 +2010,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
 
         if (callInit) {
             for (MachOModule m : modules.values()) {
-                if (m.symbolNotBound.isEmpty()) {
+                if (m.allSymbolBound) {
                     m.doInitialization(emulator);
                 }
             }
@@ -2104,7 +2047,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 }
             }
         }
-        log.info("dlsym failed: handle={}, symbolName={}", handle, symbolName);
+        log.info("dlsym failed: handle=" + handle + ", symbolName=" + symbolName);
         return null;
     }
 
@@ -2169,12 +2112,12 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         UnidbgStructure info = createDyldImageInfo(module);
         switch (state) {
             case Dyld.dyld_image_state_bound:
-                long slide = module.slide;
+                long slide = Dyld.computeSlide(emulator, module.machHeader);
                 if (!module.executable) {
                     for (UnidbgPointer callback : addImageCallbacks) {
                         if (module.addImageCallSet.add(callback)) {
                             if (log.isDebugEnabled()) {
-                                log.debug("notifySingle callback={}, module={}", callback, module.name);
+                                log.debug("notifySingle callback=" + callback + ", module=" + module.name);
                             }
                             Module.emulateFunction(emulator, callback.peer, UnidbgPointer.pointer(emulator, module.machHeader), UnidbgPointer.pointer(emulator, slide));
                         }
@@ -2183,7 +2126,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 for (UnidbgPointer handler : boundHandlers) {
                     if (module.boundCallSet.add(handler)) {
                         if (log.isDebugEnabled()) {
-                            log.debug("notifySingle state={}, handler={}, module={}", state, handler, module.name);
+                            log.debug("notifySingle state=" + state + ", handler=" + handler + ", module=" + module.name);
                         }
                         Module.emulateFunction(emulator, handler.peer, state, 1, info);
                     }
@@ -2193,7 +2136,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 for (UnidbgPointer handler : initializedHandlers) {
                     if (module.dependentsInitializedCallSet.add(handler)) {
                         if (log.isDebugEnabled()) {
-                            log.debug("dyld_image_state_dependents_initialized notifySingle state={}, handler={}, module={}", state, handler, module.name);
+                            log.debug("notifySingle state=" + state + ", handler=" + handler + ", module=" + module.name);
                         }
                         Module.emulateFunction(emulator, handler.peer, state, 1, info);
                     }
@@ -2203,7 +2146,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                 for (UnidbgPointer handler : boundHandlers) {
                     if (module.initializedCallSet.add(handler)) {
                         if (log.isDebugEnabled()) {
-                            log.debug("dyld_image_state_initialized notifySingle state={}, handler={}, module={}", state, handler, module.name);
+                            log.debug("notifySingle state=" + state + ", handler=" + handler + ", module=" + module.name);
                         }
                         Module.emulateFunction(emulator, handler.peer, state, 1, info);
                     }
@@ -2227,7 +2170,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
 
     final long allocate(long size, long mask) {
         if (log.isDebugEnabled()) {
-            log.debug("allocate size=0x{}, mask=0x{}", Long.toHexString(size), Long.toHexString(mask));
+            log.debug("allocate size=0x" + Long.toHexString(size) + ", mask=0x" + Long.toHexString(mask));
         }
 
         long address = allocateMapAddress(mask, size);
@@ -2237,7 +2180,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             mMapListener.onMap(address, size, prot);
         }
         if (memoryMap.put(address, new MemoryMap(address, size, prot)) != null) {
-            log.warn("Replace memory map address=0x{}", Long.toHexString(address));
+            log.warn("Replace memory map address=0x" + Long.toHexString(address));
         }
         return address;
     }
@@ -2267,7 +2210,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             throw new IllegalStateException("remap target_address=0x" + Long.toHexString(args.target_address) + ", size=" + args.size, e);
         }
         if (this.memoryMap.put(args.target_address, new MemoryMap(args.target_address, args.size, prot)) != null) {
-            log.warn("remap replace exists memory map: start={}", Long.toHexString(args.target_address));
+            log.warn("remap replace exists memory map: start=" + Long.toHexString(args.target_address));
         }
     }
 
@@ -2278,7 +2221,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         boolean isAnonymous = ((flags & com.github.unidbg.ios.MachO.MAP_ANONYMOUS) != 0) || (start == 0 && fd <= 0 && offset == 0);
         if ((flags & MAP_FIXED) != 0 && isAnonymous) {
             if (log.isDebugEnabled()) {
-                log.debug("mmap2 MAP_FIXED start=0x{}, length={}, prot={}", Long.toHexString(start), length, prot);
+                log.debug("mmap2 MAP_FIXED start=0x" + Long.toHexString(start) + ", length=" + length + ", prot=" + prot);
             }
 
             MemoryMap mapped = null;
@@ -2295,7 +2238,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     mMapListener.onMap(start, aligned, prot);
                 }
                 if (memoryMap.put(start, new MemoryMap(start, aligned, prot)) != null) {
-                    log.warn("mmap2 replace exists memory map: start={}", Long.toHexString(start));
+                    log.warn("mmap2 replace exists memory map: start=" + Long.toHexString(start));
                 }
                 return start;
             } else {
@@ -2306,14 +2249,14 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
         if (isAnonymous) {
             long addr = allocateMapAddress(0, aligned);
             if (log.isDebugEnabled()) {
-                log.debug("mmap2 addr=0x{}, mmapBaseAddress=0x{}, start={}, fd={}, offset={}, aligned={}", Long.toHexString(addr), Long.toHexString(mmapBaseAddress), start, fd, offset, aligned);
+                log.debug("mmap2 addr=0x" + Long.toHexString(addr) + ", mmapBaseAddress=0x" + Long.toHexString(mmapBaseAddress) + ", start=" + start + ", fd=" + fd + ", offset=" + offset + ", aligned=" + aligned);
             }
             backend.mem_map(addr, aligned, prot);
             if (mMapListener != null) {
                 mMapListener.onMap(addr, aligned, prot);
             }
             if (memoryMap.put(addr, new MemoryMap(addr, aligned, prot)) != null) {
-                log.warn("mmap2 replace exists memory map: addr={}", Long.toHexString(addr));
+                log.warn("mmap2 replace exists memory map: addr=" + Long.toHexString(addr));
             }
             return addr;
         }
@@ -2322,21 +2265,21 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             if (start == 0 && fd > 0 && (file = syscallHandler.getFileIO(fd)) != null) {
                 long addr = allocateMapAddress(0, aligned);
                 if (log.isDebugEnabled()) {
-                    log.debug("mmap2 addr=0x{}, mmapBaseAddress=0x{}", Long.toHexString(addr), Long.toHexString(mmapBaseAddress));
+                    log.debug("mmap2 addr=0x" + Long.toHexString(addr) + ", mmapBaseAddress=0x" + Long.toHexString(mmapBaseAddress));
                 }
                 long ret = file.mmap2(emulator, addr, aligned, prot, offset, length);
                 if (mMapListener != null) {
                     mMapListener.onMap(addr, aligned, prot);
                 }
                 if (memoryMap.put(addr, new MemoryMap(addr, aligned, prot)) != null) {
-                    log.warn("mmap2 replace exists memory map addr=0x{}", Long.toHexString(addr));
+                    log.warn("mmap2 replace exists memory map addr=0x" + Long.toHexString(addr));
                 }
                 return ret;
             }
 
             if ((flags & MAP_FIXED) != 0) {
                 if (log.isDebugEnabled()) {
-                    log.debug("mmap2 MAP_FIXED start=0x{}, length={}, prot={}, fd={}, offset=0x{}", Long.toHexString(start), length, prot, fd, Long.toHexString(offset));
+                    log.debug("mmap2 MAP_FIXED start=0x" + Long.toHexString(start) + ", length=" + length + ", prot=" + prot + ", fd=" + fd + ", offset=0x" + Long.toHexString(offset));
                 }
 
                 MemoryMap mapped = null;
@@ -2352,7 +2295,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                         mMapListener.onUnmap(start, aligned);
                     }
                 } else {
-                    log.warn("mmap2 MAP_FIXED not found mapped memory: start=0x{}", Long.toHexString(start));
+                    log.warn("mmap2 MAP_FIXED not found mapped memory: start=0x" + Long.toHexString(start));
                 }
                 FileIO io = syscallHandler.getFileIO(fd);
                 if (io != null) {
@@ -2365,7 +2308,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
             }
             if (flags == MAP_MY_FIXED) {
                 if (log.isDebugEnabled()) {
-                    log.debug("mmap2 NOT VM_FLAGS_ANYWHERE start=0x{}, length={}, prot={}, fd={}, offset=0x{}", Long.toHexString(start), length, prot, fd, Long.toHexString(offset));
+                    log.debug("mmap2 NOT VM_FLAGS_ANYWHERE start=0x" + Long.toHexString(start) + ", length=" + length + ", prot=" + prot + ", fd=" + fd + ", offset=0x" + Long.toHexString(offset));
                 }
 
                 MemoryMap mapped = null;
@@ -2377,7 +2320,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
 
                 if (mapped != null) {
                     if (log.isDebugEnabled()) {
-                        log.debug("mmap2 NOT VM_FLAGS_ANYWHERE found mapped memory: start=0x{}", Long.toHexString(start));
+                        log.debug("mmap2 NOT VM_FLAGS_ANYWHERE found mapped memory: start=0x" + Long.toHexString(start));
                     }
                     return 0;
                 }
@@ -2386,7 +2329,7 @@ public class MachOLoader extends AbstractLoader<DarwinFileIO> implements Memory,
                     mMapListener.onMap(start, aligned, prot);
                 }
                 if (memoryMap.put(start, new MemoryMap(start, aligned, prot)) != null) {
-                    log.warn("mmap2 NOT VM_FLAGS_ANYWHERE exists memory map addr=0x{}", Long.toHexString(start));
+                    log.warn("mmap2 NOT VM_FLAGS_ANYWHERE exists memory map addr=0x" + Long.toHexString(start));
                 }
                 if (start + aligned >= mmapBaseAddress) {
                     setMMapBaseAddress(start + aligned);

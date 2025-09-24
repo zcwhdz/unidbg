@@ -4,6 +4,4 @@ public interface Loader {
 
     boolean isPayloadModule(String path);
 
-    boolean isUseOverrideResolver();
-
 }

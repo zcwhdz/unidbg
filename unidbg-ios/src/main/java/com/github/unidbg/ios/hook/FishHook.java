@@ -6,16 +6,17 @@ import com.github.unidbg.Symbol;
 import com.github.unidbg.hook.BaseHook;
 import com.github.unidbg.hook.ReplaceCallback;
 import com.github.unidbg.hook.fishhook.IFishHook;
+import com.github.unidbg.ios.Dyld;
 import com.github.unidbg.ios.MachOModule;
 import com.github.unidbg.memory.Memory;
 import com.github.unidbg.pointer.UnidbgPointer;
 import com.sun.jna.Pointer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 public class FishHook extends BaseHook implements IFishHook {
 
-    private static final Logger log = LoggerFactory.getLogger(FishHook.class);
+    private static final Log log = LogFactory.getLog(FishHook.class);
 
     public static IFishHook getInstance(Emulator<?> emulator) {
         IFishHook fishHook = emulator.get(FishHook.class.getName());
@@ -34,7 +35,7 @@ public class FishHook extends BaseHook implements IFishHook {
         rebind_symbols = module.findSymbolByName("_rebind_symbols", false);
         rebind_symbols_image = module.findSymbolByName("_rebind_symbols_image", false);
         if (log.isDebugEnabled()) {
-            log.debug("rebind_symbols={}, rebind_symbols_image={}", rebind_symbols, rebind_symbols_image);
+            log.debug("rebind_symbols=" + rebind_symbols + ", rebind_symbols_image=" + rebind_symbols_image);
         }
 
         if (rebind_symbols == null) {
@@ -84,7 +85,7 @@ public class FishHook extends BaseHook implements IFishHook {
     public void rebindSymbolImage(Module module, String symbol, ReplaceCallback callback, boolean enablePostCall) {
         MachOModule mm = (MachOModule) module;
         long header = mm.machHeader;
-        long slide = mm.slide;
+        long slide = Dyld.computeSlide(emulator, header);
         Pointer rebinding = createRebinding(symbol, callback, enablePostCall);
         int ret = rebind_symbols_image.call(emulator, UnidbgPointer.pointer(emulator, header), UnidbgPointer.pointer(emulator, slide), rebinding, 1).intValue();
         if (ret != RET_SUCCESS) {

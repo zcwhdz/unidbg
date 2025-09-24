@@ -93,16 +93,14 @@ public class DalvikVM64 extends BaseVM implements VM {
         Pointer _FromReflectedMethod = svcMemory.registerSvc(new Arm64Svc() {
             @Override
             public long handle(Emulator<?> emulator) {
-//                throw new UnsupportedOperationException();
-                return 0;
+                throw new UnsupportedOperationException();
             }
         });
 
         Pointer _FromReflectedField = svcMemory.registerSvc(new Arm64Svc() {
             @Override
             public long handle(Emulator<?> emulator) {
-//                throw new UnsupportedOperationException();
-                return 0;
+                throw new UnsupportedOperationException();
             }
         });
 
@@ -553,9 +551,6 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
-                if(dvmClass.getClassName().equals("android/telephony/TelephonyManager")){
-                    return 0;
-                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException("dvmObject=" + dvmObject + ", dvmClass=" + dvmClass + ", jmethodID=" + jmethodID);
@@ -633,9 +628,6 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
-                if (dvmClass.getClassName().equals("android/net/wifi/WifiManager")) {
-                    return 0;
-                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
@@ -814,11 +806,6 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
-                if(dvmClass.getClassName().equals("android/telephony/TelephonyManager")){
-                    return 0;
-                }else{
-                    System.out.println(dvmClass.getClassName());
-                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
@@ -896,9 +883,6 @@ public class DalvikVM64 extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
-                if(dvmClass.getClassName().equals("android/os/BatteryManager")){
-                    return 0;
-                }
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
@@ -2072,25 +2056,7 @@ public class DalvikVM64 extends BaseVM implements VM {
         Pointer _CallStaticIntMethodA = svcMemory.registerSvc(new Arm64Svc() {
             @Override
             public long handle(Emulator<?> emulator) {
-                RegisterContext context = emulator.getContext();
-                UnidbgPointer clazz = context.getPointerArg(1);
-                UnidbgPointer jmethodID = context.getPointerArg(2);
-                UnidbgPointer jvalue = context.getPointerArg(3);
-                if (log.isDebugEnabled()) {
-                    log.debug("CallStaticIntMethodA clazz=" + clazz + ", jmethodID=" + jmethodID + ", jvalue=" + jvalue);
-                }
-                DvmClass dvmClass = classMap.get(clazz.toIntPeer());
-                DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getStaticMethod(jmethodID.toIntPeer());
-                if (dvmMethod == null) {
-                    throw new BackendException();
-                } else {
-                    VaList vaList = new JValueList(DalvikVM64.this, jvalue, dvmMethod);
-                    int ret = dvmMethod.callStaticIntMethodV(vaList);
-                    if (verbose || verboseMethodOperation) {
-                        System.out.printf("JNIEnv->CallStaticIntMethodA(%s, %s(%s) => 0x%x) was called from %s%n", dvmClass, dvmMethod.methodName, vaList.formatArgs(), ret, context.getLRPointer());
-                    }
-                    return ret;
-                }
+                throw new UnsupportedOperationException();
             }
         });
 

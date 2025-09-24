@@ -4,12 +4,12 @@ import com.github.unidbg.Emulator;
 import com.github.unidbg.pointer.UnidbgPointer;
 import com.github.unidbg.spi.InitFunction;
 import com.sun.jna.Pointer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 class AbsoluteInitFunction extends InitFunction {
 
-    private static final Logger log = LoggerFactory.getLogger(AbsoluteInitFunction.class);
+    private static final Log log = LogFactory.getLog(AbsoluteInitFunction.class);
 
     private final UnidbgPointer ptr;
 
@@ -41,13 +41,15 @@ class AbsoluteInitFunction extends InitFunction {
 
         if (address == 0 || address == -1) {
             if (log.isDebugEnabled()) {
-                log.debug("[{}]CallInitFunction: address=0x{}, ptr={}, func={}", libName, Long.toHexString(address), ptr, ptr.getPointer(0));
+                log.debug("[" + libName + "]CallInitFunction: address=0x" + Long.toHexString(address) + ", ptr=" + ptr + ", func=" + ptr.getPointer(0));
             }
             return address;
         }
 
         Pointer pointer = UnidbgPointer.pointer(emulator, address);
-        log.debug("[{}]CallInitFunction: {}", libName, pointer);
+        if (log.isDebugEnabled()) {
+            log.debug("[" + libName + "]CallInitFunction: " + pointer);
+        }
         long start = System.currentTimeMillis();
 
         emulator.eFunc(address);

@@ -21,10 +21,6 @@ public abstract class ObjC {
 
     public abstract ObjcClass lookUpClass(String className);
 
-    public abstract ObjcObject retain(ObjcObject obj);
-
-    public abstract void release(ObjcObject obj);
-
     public abstract ObjcClass getClass(String className);
 
     public abstract Pointer registerName(String selectorName);

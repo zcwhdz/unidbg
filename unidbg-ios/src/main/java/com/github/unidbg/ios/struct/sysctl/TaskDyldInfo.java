@@ -11,16 +11,17 @@ import com.github.unidbg.pointer.UnidbgPointer;
 import com.github.unidbg.pointer.UnidbgStructure;
 import com.sun.jna.Pointer;
 import com.sun.jna.Structure;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 public class TaskDyldInfo extends UnidbgStructure {
 
-    private static final Logger log = LoggerFactory.getLogger(TaskDyldInfo.class);
+    private static final Log log = LogFactory.getLog(TaskDyldInfo.class);
 
     private static final String DYLD_VERSION = "324.1";
 
@@ -40,7 +41,12 @@ public class TaskDyldInfo extends UnidbgStructure {
         SvcMemory svcMemory = emulator.getSvcMemory();
         MachOLoader loader = (MachOLoader) emulator.getMemory();
         Collection<Module> modules = loader.getLoadedModules();
-        modules.removeIf(Module::isVirtual);
+        for (Iterator<Module> iterator = modules.iterator(); iterator.hasNext(); ) {
+            Module module = iterator.next();
+            if (module.isVirtual()) {
+                iterator.remove();
+            }
+        }
         if (dyldVersion == null) {
             dyldVersion = svcMemory.writeStackString(DYLD_VERSION);
         }
